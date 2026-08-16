@@ -1,0 +1,128 @@
+# ==============================================================================
+# Git Ignore - Agent Office Room (Monorepo Best Practices)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Sensitive Credentials (CRITICAL - DO NOT COMMIT SECRETS)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+credentials.json
+serviceAccountKey.json
+*.pem
+*.key
+*.cert
+*.crt
+
+# ------------------------------------------------------------------------------
+# 2. Dependencies & Package Managers
+# ------------------------------------------------------------------------------
+node_modules/
+**/node_modules/
+.pnpm-store/
+**/.pnpm-store/
+.npm/
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 3. Build Artifacts, Compilers & Bundlers
+# ------------------------------------------------------------------------------
+dist/
+**/dist/
+dist-ssr/
+**/dist-ssr/
+build/
+**/build/
+out/
+**/out/
+.turbo/
+**/.turbo/
+.vite/
+**/.vite/
+*.tsbuildinfo
+**/*.tsbuildinfo
+.cache/
+**/.cache/
+.parcel-cache/
+vite.config.ts.timestamp-*
+
+# ------------------------------------------------------------------------------
+# 4. Agent Runtime Workspaces, Sandbox & Temp Execution Directories
+# ------------------------------------------------------------------------------
+workspace/*
+!workspace/.gitkeep
+apps/server/workspace/*
+!apps/server/workspace/.gitkeep
+scratch/
+**/scratch/
+temp/
+tmp/
+**/.tmp/
+**/.temp/
+
+# ------------------------------------------------------------------------------
+# 5. Local Databases, Cache Dumps & State Storage
+# ------------------------------------------------------------------------------
+dump.rdb
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.db
+*.db-journal
+
+# ------------------------------------------------------------------------------
+# 6. Logs & Debugging
+# ------------------------------------------------------------------------------
+logs/
+**/logs/
+*.log
+
+# ------------------------------------------------------------------------------
+# 7. Testing & Code Coverage
+# ------------------------------------------------------------------------------
+coverage/
+**/coverage/
+.nyc_output/
+*.lcov
+report.[0-9]*.json
+
+# ------------------------------------------------------------------------------
+# 8. Operating System & Filesystem Junk (macOS / Windows / Linux)
+# ------------------------------------------------------------------------------
+.DS_Store
+**/.DS_Store
+.DS_Store?
+._*
+**/\._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+[Dd]esktop.ini
+
+# ------------------------------------------------------------------------------
+# 9. IDEs & Code Editors
+# ------------------------------------------------------------------------------
+.idea/
+**/.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swo
+*.swp
+*~
