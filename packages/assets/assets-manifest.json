@@ -1,0 +1,410 @@
+{
+  "name": "Agent Office Room - Original Pixel Assets V1",
+  "version": "1.0.0",
+  "artDirection": {
+    "camera": "top-down pixel art, chibi sprites",
+    "palette": "muted cozy office colors; ink outlines",
+    "pixelFilter": "nearest-neighbor; antialias disabled"
+  },
+  "technical": {
+    "tiles": {
+      "tileWidth": 16,
+      "tileHeight": 16
+    },
+    "characters": {
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "framesPerDirection": 3
+    },
+    "props": {
+      "frameWidth": 32,
+      "frameHeight": 32
+    },
+    "ui": {
+      "frameWidth": 16,
+      "frameHeight": 16
+    }
+  },
+  "characters": {
+    "boss": {
+      "label": "Boss / Player",
+      "path": "characters/boss_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "leader": {
+      "label": "Leader Agent",
+      "path": "characters/leader_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "research": {
+      "label": "Research Agent",
+      "path": "characters/research_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "engineering": {
+      "label": "Engineering Agent",
+      "path": "characters/engineering_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "automation": {
+      "label": "Automation Agent",
+      "path": "characters/automation_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "qa": {
+      "label": "QA / Reviewer Agent",
+      "path": "characters/qa_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    },
+    "memory": {
+      "label": "Memory Agent",
+      "path": "characters/memory_32x32.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 3,
+      "rows": 4,
+      "frameOrder": "row-major",
+      "directions": {
+        "down": [
+          0,
+          1,
+          2
+        ],
+        "left": [
+          3,
+          4,
+          5
+        ],
+        "right": [
+          6,
+          7,
+          8
+        ],
+        "up": [
+          9,
+          10,
+          11
+        ]
+      },
+      "idleFrames": {
+        "down": 0,
+        "left": 3,
+        "right": 6,
+        "up": 9
+      }
+    }
+  },
+  "tileset": {
+    "path": "tiles/office_tileset_16x16.png",
+    "tileWidth": 16,
+    "tileHeight": 16,
+    "columns": 8,
+    "rows": 4,
+    "names": {
+      "floor_gray_a": 0,
+      "floor_gray_b": 1,
+      "floor_gray_light": 2,
+      "floor_blue": 3,
+      "floor_brown_a": 4,
+      "floor_brown_b": 5,
+      "floor_wood_a": 6,
+      "floor_wood_b": 7,
+      "floor_carpet_purple": 8,
+      "floor_carpet_navy": 9,
+      "floor_carpet_green": 10,
+      "floor_kitchen": 11,
+      "wall_white": 12,
+      "wall_cream": 13,
+      "wall_teal": 14,
+      "wall_baseboard": 15,
+      "wall_corner": 16,
+      "wall_window": 17,
+      "wall_glass": 18,
+      "wall_brick": 19,
+      "door_top": 20,
+      "door_bottom": 21,
+      "floor_threshold": 22,
+      "floor_rug_blue": 23,
+      "floor_rug_red": 24,
+      "floor_rug_gold": 25,
+      "floor_rug_green": 26,
+      "floor_hallway": 27,
+      "floor_mat": 28,
+      "floor_wood_dark": 29,
+      "floor_tile_pattern": 30,
+      "floor_server": 31
+    }
+  },
+  "propsAtlas": {
+    "path": "props/office_props_atlas_32x32.png",
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "columns": 8,
+    "rows": 5,
+    "names": {
+      "desk_basic": 0,
+      "desk_dual": 1,
+      "boss_desk": 2,
+      "chair_gray": 3,
+      "chair_blue": 4,
+      "monitor": 5,
+      "laptop": 6,
+      "keyboard": 7,
+      "pc_tower": 8,
+      "bookshelf_a": 9,
+      "bookshelf_b": 10,
+      "filing_cabinet": 11,
+      "server_rack": 12,
+      "server_rack_active": 13,
+      "printer": 14,
+      "water_cooler": 15,
+      "coffee_machine": 16,
+      "potted_plant": 17,
+      "big_plant": 18,
+      "cactus": 19,
+      "wall_chart": 20,
+      "wall_whiteboard": 21,
+      "sofa": 22,
+      "meeting_table": 23,
+      "round_table": 24,
+      "stool": 25,
+      "trash_bin": 26,
+      "vending_machine": 27,
+      "office_door": 28,
+      "window": 29,
+      "partition": 30,
+      "air_conditioner": 31,
+      "small_rug": 32,
+      "task_board": 33,
+      "phone": 34,
+      "desk_lamp": 35,
+      "file_stack": 36,
+      "clock": 37
+    }
+  },
+  "uiAtlas": {
+    "path": "ui/office_ui_icons_16x16.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "columns": 8,
+    "names": {
+      "bubble": 0,
+      "thinking": 1,
+      "working": 2,
+      "success": 3,
+      "blocked": 4,
+      "warning": 5,
+      "retry": 6,
+      "task": 7,
+      "tool": 8,
+      "memory": 9,
+      "message": 10,
+      "pause": 11,
+      "stop": 12,
+      "move": 13,
+      "review": 14,
+      "question": 15,
+      "star": 16,
+      "boss": 17,
+      "leader": 18,
+      "clock": 19,
+      "file": 20,
+      "settings": 21,
+      "approval": 22,
+      "error": 23
+    }
+  },
+  "speechBubble": "ui/speech_bubble_48x24.png"
+}
