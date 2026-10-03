@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #020617;
+    color: #f8fafc;
+    overflow-x: hidden;
+  }
+
+  /* Pixel art rendering rules for Phaser and pixel sprites */
+  canvas {
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Custom retro scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Ensure text selection works properly across chat and modals */
+.select-text,
+.markdown-content,
+.markdown-content * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* High-contrast modern selection color for dark theme */
+::selection {
+  background-color: #0284c7;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: #0284c7;
+  color: #ffffff;
+}
