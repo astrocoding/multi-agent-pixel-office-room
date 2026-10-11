@@ -18,7 +18,7 @@ export const App: React.FC = () => {
   const [modelTier, setModelTier] = useState<string>('Tier 1');
   const { setAgents, updateAgentStatus } = useAgentStore();
   const { setTasks, addTask, updateTask, addTerminalLog, setClarification } = useTaskStore();
-  const { addMessage } = useChatStore();
+  const { addMessage, fetchSessions } = useChatStore();
   const { addActivity, setActivities } = useActivityStore();
 
   const fetchModelRouter = async () => {
@@ -96,9 +96,19 @@ export const App: React.FC = () => {
       }
     });
 
-    // Chat messages
+    // Chat messages & sessions
     socket.on('chat:message', (msg) => {
       addMessage(msg);
+    });
+
+    socket.on('chat:session_created', () => {
+      fetchSessions();
+    });
+    socket.on('chat:session_updated', () => {
+      fetchSessions();
+    });
+    socket.on('chat:session_deleted', () => {
+      fetchSessions();
     });
 
     // Agent summon by Boss mention in chat
@@ -119,9 +129,12 @@ export const App: React.FC = () => {
       socket.off('task:clarification_needed');
       socket.off('task:activity');
       socket.off('chat:message');
+      socket.off('chat:session_created');
+      socket.off('chat:session_updated');
+      socket.off('chat:session_deleted');
       socket.off('agent:summon' as any);
     };
-  }, [setAgents, updateAgentStatus, setTasks, addTask, updateTask, addActivity, setActivities, addMessage]);
+  }, [setAgents, updateAgentStatus, setTasks, addTask, updateTask, addActivity, setActivities, addMessage, fetchSessions]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">

@@ -262,7 +262,33 @@ function renderInlineWithBreaks(text: string): React.ReactNode[] {
 }
 
 /**
- * Inline Tokenizer & Renderer (Bold, Italic, Code, Links).
+ * Renders text with @mentions (e.g. @Zen, @Iky, @Dre, @Gus, @Rai, @Dhea, @Boss) highlighted in sky blue linked tags.
+ */
+function renderTextWithMentions(content: string, keyPrefix: string | number): React.ReactNode {
+  if (!content) return null;
+
+  const mentionRegex = /(@[a-zA-Z0-9_-]+)/g;
+  const parts = content.split(mentionRegex);
+
+  return parts.map((sub, i) => {
+    if (!sub) return null;
+    if (sub.startsWith('@') && sub.length > 1) {
+      return (
+        <span
+          key={`${keyPrefix}-m-${i}`}
+          className="text-sky-400 font-semibold bg-sky-950/70 border border-sky-800/60 px-1 py-0.2 rounded text-[10.5px] hover:bg-sky-900/90 hover:text-sky-300 transition-colors cursor-pointer select-text font-mono inline-flex items-center gap-0.5 shadow-xs mx-0.5"
+          title={`Mentioned agent: ${sub}`}
+        >
+          {sub}
+        </span>
+      );
+    }
+    return <span key={`${keyPrefix}-t-${i}`}>{sub}</span>;
+  });
+}
+
+/**
+ * Inline Tokenizer & Renderer (Bold, Italic, Code, Links, Mentions).
  */
 function renderInline(text: string): React.ReactNode {
   if (!text) return null;
@@ -298,7 +324,7 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(3, -3);
       return (
         <strong key={index} className="font-bold italic text-amber-200">
-          {inner}
+          {renderTextWithMentions(inner, `${index}-bi`)}
         </strong>
       );
     }
@@ -308,7 +334,7 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(2, -2);
       return (
         <strong key={index} className="font-bold text-slate-100">
-          {inner}
+          {renderTextWithMentions(inner, `${index}-b`)}
         </strong>
       );
     }
@@ -318,7 +344,7 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(2, -2);
       return (
         <strong key={index} className="font-bold text-slate-100">
-          {inner}
+          {renderTextWithMentions(inner, `${index}-b`)}
         </strong>
       );
     }
@@ -328,7 +354,7 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(1, -1);
       return (
         <em key={index} className="italic text-amber-200/90 font-medium">
-          {inner}
+          {renderTextWithMentions(inner, `${index}-i`)}
         </em>
       );
     }
@@ -338,7 +364,7 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(1, -1);
       return (
         <em key={index} className="italic text-amber-200/90 font-medium">
-          {inner}
+          {renderTextWithMentions(inner, `${index}-i`)}
         </em>
       );
     }
@@ -359,8 +385,8 @@ function renderInline(text: string): React.ReactNode {
       );
     }
 
-    // Plain text
-    return <span key={index}>{part}</span>;
+    // Plain text with mentions
+    return renderTextWithMentions(part, index);
   });
 }
 
