@@ -1,8 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { DbQueries } from '../db/queries.js';
-import { createTaskSchema, memoryCreateSchema, memoryQuerySchema } from '@agent-office/shared';
+import {
+  createTaskSchema,
+  memoryCreateSchema,
+  memoryQuerySchema,
+  createChatSessionSchema,
+  updateChatSessionSchema,
+  chatSendSchema,
+  AGENT_IDS,
+  type AgentId,
+} from '@agent-office/shared';
 import type { OfficeWorkflowOrchestrator } from '../graph/workflow.js';
 import type { MemoryService } from '../memory/memoryService.js';
+import type { SocketServerBridge } from '../socket/socketServer.js';
+import type { AdkOfficeService } from '../agents/adkOfficeService.js';
+import type { ChatAgentService } from '../agents/chatAgentService.js';
 import { GeminiProvider, type ModelRouter } from '@agent-office/ai';
 import crypto from 'crypto';
 
@@ -10,7 +22,10 @@ export function registerRoutes(
   server: FastifyInstance,
   orchestrator: OfficeWorkflowOrchestrator,
   memoryService: MemoryService,
-  modelRouter?: ModelRouter
+  modelRouter?: ModelRouter,
+  socketBridge?: SocketServerBridge,
+  adkOfficeService?: AdkOfficeService | null,
+  chatAgentService?: ChatAgentService
 ): void {
   // Health
   server.get('/api/health', async () => {
@@ -174,6 +189,157 @@ export function registerRoutes(
     return reply
       .status(400)
       .send({ success: false, error: 'Primary provider does not support dynamic switching' });
+  });
+
+  // ============================================================================
+  // Chat Workspace & History Sessions
+  // ============================================================================
+
+  // List all chat sessions
+  server.get('/api/chats', async (req) => {
+    const query = req.query as { limit?: string; projectScope?: string };
+    const limit = query.limit ? parseInt(query.limit, 10) : 30;
+    const sessions = await DbQueries.getChatSessions(limit, query.projectScope);
+    return { success: true, count: sessions.length, sessions };
+  });
+
+  // Create new chat session (New Chat)
+  server.post('/api/chats', async (req, reply) => {
+    const parsed = createChatSessionSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.issues });
+    }
+
+    const sessionId = `session_${crypto.randomUUID()}`;
+    const session = await DbQueries.createChatSession({
+      id: sessionId,
+      title: parsed.data.title || 'New Chat',
+      projectScope: parsed.data.projectScope,
+      primaryIntent: parsed.data.primaryIntent,
+      targetAgentId: parsed.data.targetAgentId,
+      contextSnapshot: parsed.data.contextSnapshot,
+    });
+
+    if (socketBridge) {
+      socketBridge.broadcastSessionCreated(session);
+    }
+
+    return reply.status(201).send({ success: true, session });
+  });
+
+  // Get specific chat session + its messages
+  server.get('/api/chats/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const session = await DbQueries.getChatSessionById(id);
+    if (!session) {
+      return reply.status(404).send({ success: false, error: 'Chat session not found' });
+    }
+
+    const messages = await DbQueries.getChatMessages(id, 100);
+    return { success: true, session, messages };
+  });
+
+  // Update chat session (e.g. rename title, change projectScope, pin)
+  server.put('/api/chats/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = updateChatSessionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.issues });
+    }
+
+    const updated = await DbQueries.updateChatSession(id, parsed.data);
+    if (!updated) {
+      return reply.status(404).send({ success: false, error: 'Chat session not found' });
+    }
+
+    if (socketBridge) {
+      socketBridge.broadcastSessionUpdated(updated);
+    }
+
+    return { success: true, session: updated };
+  });
+
+  // Delete chat session + all messages
+  server.delete('/api/chats/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const deleted = await DbQueries.deleteChatSession(id);
+    if (!deleted) {
+      return reply.status(404).send({ success: false, error: 'Chat session not found' });
+    }
+
+    if (socketBridge) {
+      socketBridge.broadcastSessionDeleted(id);
+    }
+
+    return { success: true, message: 'Chat session deleted successfully' };
+  });
+
+  // Get messages for a session
+  server.get('/api/chats/:id/messages', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const session = await DbQueries.getChatSessionById(id);
+    if (!session) {
+      return reply.status(404).send({ success: false, error: 'Chat session not found' });
+    }
+
+    const messages = await DbQueries.getChatMessages(id, 100);
+    return { success: true, count: messages.length, messages };
+  });
+
+  // Send message to a session via REST API
+  server.post('/api/chats/:id/messages', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const session = await DbQueries.getChatSessionById(id);
+    if (!session) {
+      return reply.status(404).send({ success: false, error: 'Chat session not found' });
+    }
+
+    const parsed = chatSendSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.issues });
+    }
+
+    // Auto-update session title from first prompt if title is 'New Chat'
+    if (session.title === 'New Chat' || session.messageCount === 0) {
+      const newTitle = DbQueries.extractChatTitle(parsed.data.text);
+      if (newTitle && newTitle !== session.title) {
+        const updated = await DbQueries.updateChatSession(id, { title: newTitle });
+        if (updated && socketBridge) {
+          socketBridge.broadcastSessionUpdated(updated);
+        }
+      }
+    }
+
+    const msgId = `msg_${Date.now()}`;
+    const bossMsg = await DbQueries.createChatMessage({
+      id: msgId,
+      sessionId: id,
+      sender: 'boss',
+      senderName: 'Boss (You)',
+      text: parsed.data.text,
+      type: 'dialogue',
+      mentionedAgents: parsed.data.recipientAgentId ? [parsed.data.recipientAgentId] : [],
+    });
+
+    if (socketBridge) {
+      socketBridge.broadcastChat(bossMsg);
+    }
+
+    // Trigger agent reply asynchronously
+    const target = parsed.data.recipientAgentId || AGENT_IDS.LEADER;
+    setTimeout(async () => {
+      try {
+        if (adkOfficeService) {
+          await adkOfficeService.handleBossMessage(parsed.data.text, target, undefined, id);
+        } else if (chatAgentService) {
+          await chatAgentService.handleBossMessage(parsed.data.text, target, undefined, id);
+        }
+      } catch (err: unknown) {
+        console.error('[API Chat] Error handling message:', err);
+      }
+    }, 100);
+
+    return reply.status(201).send({ success: true, message: bossMsg });
   });
 }
 

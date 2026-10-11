@@ -180,12 +180,12 @@ async function bootstrap() {
   });
 
   // 11. Connect Socket.IO Boss Chat to Agent Office Runtime
-  socketBridge.setChatReceiveHandler(async (text, recipient, attachments) => {
+  socketBridge.setChatReceiveHandler(async (text, recipient, attachments, sessionId) => {
     try {
       if (adkOfficeService) {
-        await adkOfficeService.handleBossMessage(text, recipient, attachments);
+        await adkOfficeService.handleBossMessage(text, recipient, attachments, sessionId);
       } else {
-        await chatAgentService.handleBossMessage(text, recipient, attachments);
+        await chatAgentService.handleBossMessage(text, recipient, attachments, sessionId);
       }
     } catch (err: unknown) {
       console.error('[Chat Engine] Error processing chat message:', err);
@@ -193,6 +193,7 @@ async function bootstrap() {
       const cfg = AGENT_CONFIGS[target];
       socketBridge.broadcastChat({
         id: `chat_${Date.now()}`,
+        sessionId,
         sender: target,
         senderName: cfg.name,
         text: `Maaf Bos, terjadi kendala saat memproses: ${(err as Error).message}`,
@@ -203,7 +204,7 @@ async function bootstrap() {
   });
 
   // 10. Register REST API Routes
-  registerRoutes(app, orchestrator, memoryService, modelRouter);
+  registerRoutes(app, orchestrator, memoryService, modelRouter, socketBridge, adkOfficeService, chatAgentService);
 
   // 11. Listen
   await app.listen({ port: PORT, host: '0.0.0.0' });

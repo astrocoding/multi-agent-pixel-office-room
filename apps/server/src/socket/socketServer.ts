@@ -25,7 +25,8 @@ export class SocketServerBridge {
   private onChatReceived?: (
     text: string,
     recipient?: AgentId,
-    attachments?: import('@agent-office/shared').TaskAttachment[]
+    attachments?: import('@agent-office/shared').TaskAttachment[],
+    sessionId?: string
   ) => Promise<void>;
 
   constructor(httpServer: HttpServer, allowedOrigin = '*') {
@@ -58,10 +59,23 @@ export class SocketServerBridge {
     fn: (
       text: string,
       recipient?: AgentId,
-      attachments?: import('@agent-office/shared').TaskAttachment[]
+      attachments?: import('@agent-office/shared').TaskAttachment[],
+      sessionId?: string
     ) => Promise<void>
   ): void {
     this.onChatReceived = fn;
+  }
+
+  public broadcastSessionCreated(session: import('@agent-office/shared').ChatSession): void {
+    this.io.emit('chat:session_created', session);
+  }
+
+  public broadcastSessionUpdated(session: import('@agent-office/shared').ChatSession): void {
+    this.io.emit('chat:session_updated', session);
+  }
+
+  public broadcastSessionDeleted(sessionId: string): void {
+    this.io.emit('chat:session_deleted', { sessionId });
   }
 
   private setupListeners(): void {
@@ -152,13 +166,54 @@ export class SocketServerBridge {
           mentionedAgentId = recipient;
         }
 
+        let sessionId = data.sessionId;
+        if (!sessionId) {
+          const sessions = await DbQueries.getChatSessions(1);
+          if (sessions.length > 0) {
+            sessionId = sessions[0].id;
+          } else {
+            const newSession = await DbQueries.createChatSession({
+              id: `session_${Date.now()}`,
+              title: DbQueries.extractChatTitle(data.text),
+            });
+            sessionId = newSession.id;
+            this.broadcastSessionCreated(newSession);
+          }
+        }
+
+        // Auto-update session title from first prompt if title is 'New Chat'
+        const currentSession = await DbQueries.getChatSessionById(sessionId);
+        if (currentSession && (currentSession.title === 'New Chat' || currentSession.messageCount === 0)) {
+          const newTitle = DbQueries.extractChatTitle(data.text);
+          if (newTitle && newTitle !== currentSession.title) {
+            const updated = await DbQueries.updateChatSession(sessionId, { title: newTitle });
+            if (updated) {
+              this.broadcastSessionUpdated(updated);
+            }
+          }
+        }
+
+        const msgId = `msg_${Date.now()}`;
+        // Persist message to database
+        await DbQueries.createChatMessage({
+          id: msgId,
+          sessionId,
+          sender: 'boss',
+          senderName: 'Boss (You)',
+          text: data.text,
+          type: 'dialogue',
+          mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
+        }).catch((e) => console.error('[Socket] Failed to persist boss chat message:', e));
+
         const msg: ChatMessage = {
-          id: `msg_${Date.now()}`,
+          id: msgId,
+          sessionId,
           sender: 'boss',
           senderName: 'Boss (You)',
           text: data.text,
           timestamp: new Date().toISOString(),
           type: 'dialogue',
+          mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
         };
 
         this.broadcastChat(msg);
@@ -178,7 +233,7 @@ export class SocketServerBridge {
         }
 
         if (this.onChatReceived) {
-          await this.onChatReceived(data.text, recipient, data.attachments);
+          await this.onChatReceived(data.text, recipient, data.attachments, sessionId);
         }
       });
 

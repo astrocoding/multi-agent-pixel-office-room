@@ -7,6 +7,7 @@ import {
 } from '@agent-office/shared';
 import type { ModelRouter } from '@agent-office/ai';
 import type { SocketServerBridge } from '../socket/socketServer.js';
+import { DbQueries } from '../db/queries.js';
 import { WorkspaceFsTools, ShellExecutionTool, AttachmentAnalyzer } from '../tools/index.js';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -86,7 +87,8 @@ export class ChatAgentService {
   public async handleBossMessage(
     userText: string,
     recipientId?: AgentId,
-    attachments?: TaskAttachment[]
+    attachments?: TaskAttachment[],
+    sessionId?: string
   ): Promise<void> {
     const targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
@@ -440,8 +442,21 @@ CRITICAL RULES:
       bubbleType: 'speech',
     });
 
+    const msgId = `chat_${Date.now()}`;
+    if (sessionId) {
+      await DbQueries.createChatMessage({
+        id: msgId,
+        sessionId,
+        sender: targetAgentId,
+        senderName: `${cfg.name} (${cfg.role.split(' ')[0]})`,
+        text: replyText,
+        type: 'dialogue',
+      }).catch((e) => console.error('[ChatAgentService] Failed to persist agent reply:', e));
+    }
+
     this.socketBridge.broadcastChat({
-      id: `chat_${Date.now()}`,
+      id: msgId,
+      sessionId,
       sender: targetAgentId,
       senderName: `${cfg.name} (${cfg.role.split(' ')[0]})`,
       text: replyText,

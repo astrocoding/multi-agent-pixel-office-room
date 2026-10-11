@@ -485,7 +485,8 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
   public async handleBossMessage(
     userText: string,
     recipientId?: AgentId,
-    attachments?: TaskAttachment[]
+    attachments?: TaskAttachment[],
+    sessionId?: string
   ): Promise<string> {
     const targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
@@ -514,9 +515,10 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
       }
     }
 
-    // Retrieve high-salience sliding-window context from Redis
+    // Retrieve high-salience sliding-window context from Redis isolated per session
     if (this.memoryService) {
-      const priorContext = await this.memoryService.getProportionalContext('office_main_chat', 6);
+      const sessionKey = sessionId ? `chat:${sessionId}:context` : 'office_main_chat';
+      const priorContext = await this.memoryService.getProportionalContext(sessionKey, 6);
       if (priorContext) {
         enrichedPrompt = `[Recent Dialogue Context]:\n${priorContext}\n\n${enrichedPrompt}`;
       }
@@ -627,6 +629,18 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
 
     const speakingCfg = AGENT_CONFIGS[currentSpeakingAgentId] || cfg;
 
+    const msgId = `chat_${Date.now()}`;
+    if (sessionId) {
+      await DbQueries.createChatMessage({
+        id: msgId,
+        sessionId,
+        sender: currentSpeakingAgentId,
+        senderName: speakingCfg.name,
+        text: finalReply,
+        type: 'dialogue',
+      }).catch((e) => console.error('[AdkOfficeService] Failed to persist agent reply:', e));
+    }
+
     // Broadcast final speech bubble & chat
     this.socketBridge.broadcastBubble({
       agentId: currentSpeakingAgentId,
@@ -636,7 +650,8 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
     });
 
     this.socketBridge.broadcastChat({
-      id: `chat_${Date.now()}`,
+      id: msgId,
+      sessionId,
       sender: currentSpeakingAgentId,
       senderName: speakingCfg.name,
       text: finalReply,
@@ -650,14 +665,15 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
       currentThought: 'Ready for next directive from Boss.',
     });
 
-    // Store in Redis session sliding window context
+    // Store in Redis session sliding window context isolated by sessionId
     if (this.memoryService) {
+      const sessionKey = sessionId ? `chat:${sessionId}:context` : 'office_main_chat';
       this.memoryService
-        .appendSessionContext('office_main_chat', `Boss: ${userText}`)
+        .appendSessionContext(sessionKey, `Boss: ${userText}`)
         .catch(() => {});
       this.memoryService
         .appendSessionContext(
-          'office_main_chat',
+          sessionKey,
           `${speakingCfg.name}: ${finalReply.slice(0, 250)}`
         )
         .catch(() => {});
