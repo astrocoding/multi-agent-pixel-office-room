@@ -163,6 +163,65 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
+    // 8. Real-time AI Workspace Chat Sessions & Message History
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL DEFAULT 'New Chat',
+        project_scope VARCHAR(120) DEFAULT 'default',
+        primary_intent VARCHAR(120),
+        summary TEXT,
+        context_snapshot JSONB DEFAULT '{}'::jsonb,
+        target_agent_id VARCHAR(64) DEFAULT 'agent_leader',
+        model_used VARCHAR(64),
+        message_count INT DEFAULT 0,
+        is_pinned BOOLEAN DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_scope);
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        sender VARCHAR(64) NOT NULL,
+        sender_name VARCHAR(120) NOT NULL,
+        text TEXT NOT NULL,
+        type VARCHAR(32) DEFAULT 'dialogue',
+        intent VARCHAR(120),
+        mentioned_agents JSONB DEFAULT '[]'::jsonb,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at ASC);
+    `);
+
+    // Seed default chat session if table is empty
+    const sessionCountRes = await client.query('SELECT COUNT(*) FROM chat_sessions;');
+    if (parseInt(sessionCountRes.rows[0].count, 10) === 0) {
+      const defaultSessionId = 'session_default';
+      await client.query(
+        `
+        INSERT INTO chat_sessions (id, title, project_scope, target_agent_id, message_count)
+        VALUES ($1, 'General Office Workspace', 'default', 'agent_leader', 1)
+        ON CONFLICT (id) DO NOTHING;
+      `,
+        [defaultSessionId]
+      );
+
+      await client.query(
+        `
+        INSERT INTO chat_messages (id, session_id, sender, sender_name, text, type)
+        VALUES ($1, $2, 'agent_leader', 'Zen (Leader)', 'Selamat pagi, Bos! Tim siap siaga di workstation masing-masing. Silakan panggil kami di chat (@Zen, @Iky, @Dre, @Gus, @Rai, @Dhea) atau tekan [E] untuk berdiskusi langsung.', 'announcement')
+        ON CONFLICT (id) DO NOTHING;
+      `,
+        [`msg_${Date.now()}`, defaultSessionId]
+      );
+    }
+
     // Seed agent states if not existing
     for (const id of Object.keys(AGENT_CONFIGS) as AgentId[]) {
       const cfg = AGENT_CONFIGS[id];

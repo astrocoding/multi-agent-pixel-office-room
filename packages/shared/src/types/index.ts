@@ -148,14 +148,33 @@ export interface MemoryRecord {
   similarity?: number;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  projectScope: string;
+  primaryIntent?: string;
+  summary?: string;
+  contextSnapshot?: Record<string, unknown>;
+  targetAgentId?: AgentId | string;
+  modelUsed?: string;
+  messageCount: number;
+  isPinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatMessage {
   id: string;
+  sessionId?: string;
   sender: AgentId | 'boss' | 'system';
   senderName: string;
   text: string;
   taskId?: string;
   timestamp: string;
   type: 'dialogue' | 'status' | 'announcement';
+  intent?: string;
+  mentionedAgents?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface BubbleChatPayload {
@@ -196,6 +215,9 @@ export interface ServerToClientEvents {
   'task:updated': (task: Task) => void;
   'task:activity': (activity: TaskActivity) => void;
   'chat:message': (message: ChatMessage) => void;
+  'chat:session_created': (session: ChatSession) => void;
+  'chat:session_updated': (session: ChatSession) => void;
+  'chat:session_deleted': (data: { sessionId: string }) => void;
   'tool:executed': (data: ToolExecutionRecord) => void;
   'task:clarification_needed': (data: ClarificationRequest) => void;
   'system:notification': (data: { level: 'info' | 'warn' | 'error'; message: string }) => void;
@@ -217,7 +239,7 @@ export interface ClientToServerEvents {
     data: { taskId: string; response: string },
     callback?: (res: { success: boolean }) => void
   ) => void;
-  'chat:send': (data: { text: string; recipientAgentId?: AgentId; attachments?: TaskAttachment[] }) => void;
+  'chat:send': (data: { text: string; recipientAgentId?: AgentId; attachments?: TaskAttachment[]; sessionId?: string }) => void;
   'agent:interact': (data: { agentId: AgentId; intent: string }) => void;
 }
 

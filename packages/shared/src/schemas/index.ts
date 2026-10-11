@@ -72,7 +72,25 @@ export const playerMoveSchema = z.object({
 });
 
 export const chatSendSchema = z.object({
-  text: z.string().min(1).max(1000),
+  text: z.string().min(1).max(4000),
   recipientAgentId: agentIdSchema.optional(),
+  sessionId: z.string().optional(),
+});
+
+export const createChatSessionSchema = z.object({
+  title: z.string().max(255).optional(),
+  projectScope: z.string().max(120).default('default'),
+  primaryIntent: z.string().max(120).optional(),
+  targetAgentId: z.string().max(64).default(AGENT_IDS.LEADER),
+  contextSnapshot: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const updateChatSessionSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  projectScope: z.string().max(120).optional(),
+  primaryIntent: z.string().max(120).optional(),
+  summary: z.string().optional(),
+  contextSnapshot: z.record(z.string(), z.unknown()).optional(),
+  isPinned: z.boolean().optional(),
 });
 

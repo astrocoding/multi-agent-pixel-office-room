@@ -1,5 +1,5 @@
 import { dbPool } from './connection.js';
-import type { AgentId, AgentRuntimeState, MemoryRecord, MemoryType, Task, TaskActivity, TaskStateType } from '@agent-office/shared';
+import type { AgentId, AgentRuntimeState, ChatMessage, ChatSession, MemoryRecord, MemoryType, Task, TaskActivity, TaskStateType } from '@agent-office/shared';
 
 export class DbQueries {
   // Tasks
@@ -389,6 +389,213 @@ export class DbQueries {
         similarity: 1,
       }));
     }
+  }
+
+  // Chat Workspace Sessions & Message History
+  public static async getChatSessions(limit = 30, projectScope?: string): Promise<ChatSession[]> {
+    let query = 'SELECT * FROM chat_sessions';
+    const params: unknown[] = [];
+    if (projectScope) {
+      params.push(projectScope);
+      query += ' WHERE project_scope = $1';
+    }
+    query += ` ORDER BY updated_at DESC LIMIT $${params.length + 1};`;
+    params.push(limit);
+
+    const res = await dbPool.query(query, params);
+    return res.rows.map((r) => this.mapChatSession(r));
+  }
+
+  public static async getChatSessionById(sessionId: string): Promise<ChatSession | null> {
+    const res = await dbPool.query('SELECT * FROM chat_sessions WHERE id = $1;', [sessionId]);
+    return res.rows[0] ? this.mapChatSession(res.rows[0]) : null;
+  }
+
+  public static async createChatSession(data: {
+    id: string;
+    title?: string;
+    projectScope?: string;
+    primaryIntent?: string;
+    targetAgentId?: string;
+    contextSnapshot?: Record<string, unknown>;
+  }): Promise<ChatSession> {
+    const title = data.title?.trim() || 'New Chat';
+    const res = await dbPool.query(
+      `
+      INSERT INTO chat_sessions (id, title, project_scope, primary_intent, target_agent_id, context_snapshot, message_count)
+      VALUES ($1, $2, $3, $4, $5, $6, 0)
+      RETURNING *;
+    `,
+      [
+        data.id,
+        title,
+        data.projectScope || 'default',
+        data.primaryIntent || null,
+        data.targetAgentId || 'agent_leader',
+        data.contextSnapshot ? JSON.stringify(data.contextSnapshot) : '{}',
+      ]
+    );
+    return this.mapChatSession(res.rows[0]);
+  }
+
+  public static async updateChatSession(
+    sessionId: string,
+    updates: {
+      title?: string;
+      projectScope?: string;
+      primaryIntent?: string;
+      summary?: string;
+      contextSnapshot?: Record<string, unknown>;
+      modelUsed?: string;
+      isPinned?: boolean;
+    }
+  ): Promise<ChatSession | null> {
+    const res = await dbPool.query(
+      `
+      UPDATE chat_sessions
+      SET title = COALESCE($2, title),
+          project_scope = COALESCE($3, project_scope),
+          primary_intent = COALESCE($4, primary_intent),
+          summary = COALESCE($5, summary),
+          context_snapshot = COALESCE($6, context_snapshot),
+          model_used = COALESCE($7, model_used),
+          is_pinned = COALESCE($8, is_pinned),
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `,
+      [
+        sessionId,
+        updates.title || null,
+        updates.projectScope || null,
+        updates.primaryIntent || null,
+        updates.summary || null,
+        updates.contextSnapshot ? JSON.stringify(updates.contextSnapshot) : null,
+        updates.modelUsed || null,
+        updates.isPinned !== undefined ? updates.isPinned : null,
+      ]
+    );
+    return res.rows[0] ? this.mapChatSession(res.rows[0]) : null;
+  }
+
+  public static async deleteChatSession(sessionId: string): Promise<boolean> {
+    const res = await dbPool.query('DELETE FROM chat_sessions WHERE id = $1;', [sessionId]);
+    return (res.rowCount || 0) > 0;
+  }
+
+  public static async getChatMessages(sessionId: string, limit = 100): Promise<ChatMessage[]> {
+    const res = await dbPool.query(
+      `SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT $2;`,
+      [sessionId, limit]
+    );
+    return res.rows.map((r) => this.mapChatMessage(r));
+  }
+
+  public static async createChatMessage(msg: {
+    id: string;
+    sessionId: string;
+    sender: string;
+    senderName: string;
+    text: string;
+    type?: string;
+    intent?: string;
+    mentionedAgents?: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<ChatMessage> {
+    const client = await dbPool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const res = await client.query(
+        `
+        INSERT INTO chat_messages (id, session_id, sender, sender_name, text, type, intent, mentioned_agents, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *;
+      `,
+        [
+          msg.id,
+          msg.sessionId,
+          msg.sender,
+          msg.senderName,
+          msg.text,
+          msg.type || 'dialogue',
+          msg.intent || null,
+          msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : '[]',
+          msg.metadata ? JSON.stringify(msg.metadata) : '{}',
+        ]
+      );
+
+      // Increment message count and updated_at on the session
+      await client.query(
+        `
+        UPDATE chat_sessions
+        SET message_count = message_count + 1,
+            updated_at = NOW()
+        WHERE id = $1;
+      `,
+        [msg.sessionId]
+      );
+
+      await client.query('COMMIT');
+      return this.mapChatMessage(res.rows[0]);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  public static extractChatTitle(prompt: string): string {
+    if (!prompt) return 'New Chat';
+    // Remove @mentions
+    let clean = prompt.replace(/@[a-zA-Z0-9_-]+/g, '').trim();
+    // Remove common command prefixes in Indonesian & English
+    clean = clean
+      .replace(
+        /^(tolong|bantu saya|buatkan|coba|tolong buatkan|bagaimana|bagaimanakah|can you|please|could you|create a|write a)\s+/i,
+        ''
+      )
+      .trim();
+    // Take first sentence or first 42 characters
+    clean = clean.split(/[\n.?!]/)[0].trim();
+    if (!clean) return 'New Chat';
+    if (clean.length > 42) {
+      clean = clean.slice(0, 42).trim() + '...';
+    }
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+
+  private static mapChatSession(r: Record<string, unknown>): ChatSession {
+    return {
+      id: r.id as string,
+      title: r.title as string,
+      projectScope: (r.project_scope as string) || 'default',
+      primaryIntent: (r.primary_intent as string) || undefined,
+      summary: (r.summary as string) || undefined,
+      contextSnapshot: (r.context_snapshot as Record<string, unknown>) || {},
+      targetAgentId: (r.target_agent_id as string) || 'agent_leader',
+      modelUsed: (r.model_used as string) || undefined,
+      messageCount: parseInt(String(r.message_count || 0), 10),
+      isPinned: Boolean(r.is_pinned),
+      createdAt: (r.created_at as Date).toISOString(),
+      updatedAt: (r.updated_at as Date).toISOString(),
+    };
+  }
+
+  private static mapChatMessage(r: Record<string, unknown>): ChatMessage {
+    return {
+      id: r.id as string,
+      sessionId: (r.session_id as string) || undefined,
+      sender: r.sender as AgentId | 'boss' | 'system',
+      senderName: r.sender_name as string,
+      text: r.text as string,
+      timestamp: (r.created_at as Date).toISOString(),
+      type: (r.type as 'dialogue' | 'status' | 'announcement') || 'dialogue',
+      intent: (r.intent as string) || undefined,
+      mentionedAgents: (r.mentioned_agents as string[]) || [],
+      metadata: (r.metadata as Record<string, unknown>) || {},
+    };
   }
 
   private static mapTask(row: Record<string, unknown>): Task {
