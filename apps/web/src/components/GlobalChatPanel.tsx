@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../stores/useChatStore.js';
 import { socket } from '../services/socket.js';
-import { AGENT_CONFIGS, AGENT_IDS, type AgentId } from '@agent-office/shared';
+import { AGENT_IDS, type AgentId } from '@agent-office/shared';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 
 export const GlobalChatPanel: React.FC = () => {
@@ -73,15 +73,6 @@ export const GlobalChatPanel: React.FC = () => {
       await updateSessionTitle(activeSessionId, titleDraft.trim());
     }
     setIsEditingTitle(false);
-  };
-
-  const handleInsertMention = (agentName: string) => {
-    const mention = `@${agentName} `;
-    setText((prev) => {
-      if (prev.includes(mention.trim())) return prev;
-      return `${prev ? prev.trimEnd() + ' ' : ''}${mention}`;
-    });
-    inputRef.current?.focus();
   };
 
   const getSenderColor = (sender: string) => {
@@ -295,26 +286,8 @@ export const GlobalChatPanel: React.FC = () => {
         <div ref={scrollRef} />
       </div>
 
-      {/* Quick Mention Chips */}
-      <div className="pt-1.5 flex items-center gap-1 overflow-x-auto custom-scrollbar shrink-0 select-none">
-        <span className="text-[9px] text-slate-500 uppercase tracking-wider shrink-0">Mention:</span>
-        {Object.keys(AGENT_CONFIGS).map((id) => {
-          const cfg = AGENT_CONFIGS[id as AgentId];
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => handleInsertMention(cfg.name)}
-              className="text-[9.5px] font-mono text-sky-400 bg-sky-950/50 hover:bg-sky-900 border border-sky-800/60 px-1.5 py-0.2 rounded transition-colors shrink-0 cursor-pointer"
-            >
-              @{cfg.name}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Input Form */}
-      <form onSubmit={handleSend} className="mt-1.5 pt-1.5 border-t border-slate-800 flex gap-2 shrink-0">
+      <form onSubmit={handleSend} className="mt-2 pt-2 border-t border-slate-800 flex gap-2 shrink-0">
         <select
           value={recipient}
           onChange={(e) => setRecipient(e.target.value as AgentId)}
