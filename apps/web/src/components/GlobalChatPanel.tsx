@@ -87,7 +87,7 @@ export const GlobalChatPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full max-h-[300px] bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg min-h-0 overflow-hidden relative">
+    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg min-h-0 overflow-hidden relative">
       {/* Header Bar with Chat Session Info & Thread Controls */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2 shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">

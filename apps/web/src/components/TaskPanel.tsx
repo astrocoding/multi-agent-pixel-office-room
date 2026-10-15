@@ -163,7 +163,7 @@ export const TaskPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg">
+    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg min-h-0 overflow-hidden">
       <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2.5">
         <h2 className="text-sm font-bold tracking-wider text-sky-400 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
@@ -420,9 +420,9 @@ export const TaskPanel: React.FC = () => {
                         </div>
                         <p className="text-slate-300 text-[10px] mt-0.5">{s.objective}</p>
                         {s.result && (
-                          <p className="text-emerald-400/90 text-[10px] mt-1 font-mono bg-slate-950 p-1 rounded border border-slate-800">
-                            {s.result}
-                          </p>
+                          <div className="text-emerald-400/90 text-[10px] mt-1 font-mono bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <MarkdownRenderer content={s.result} />
+                          </div>
                         )}
                       </div>
                       <span

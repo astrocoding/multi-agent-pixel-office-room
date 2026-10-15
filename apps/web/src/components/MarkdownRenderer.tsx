@@ -60,6 +60,7 @@ function parseMarkdownBlocks(rawText: string): React.ReactNode[] {
   let codeBlockLines: string[] = [];
 
   let currentListType: 'ol' | 'ul' | null = null;
+  let currentListStart = 1;
   let currentListItems: string[] = [];
 
   let currentParagraphLines: string[] = [];
@@ -80,7 +81,11 @@ function parseMarkdownBlocks(rawText: string): React.ReactNode[] {
     if (currentListType && currentListItems.length > 0) {
       if (currentListType === 'ol') {
         elements.push(
-          <ol key={`ol-${elements.length}`} className="list-decimal list-outside ml-4 space-y-1 my-1.5">
+          <ol
+            key={`ol-${elements.length}`}
+            start={currentListStart}
+            className="list-decimal list-outside ml-4 space-y-1 my-1.5"
+          >
             {currentListItems.map((item, i) => (
               <li key={i} className="pl-1 leading-relaxed">
                 {renderInline(item)}
@@ -100,6 +105,7 @@ function parseMarkdownBlocks(rawText: string): React.ReactNode[] {
         );
       }
       currentListType = null;
+      currentListStart = 1;
       currentListItems = [];
     }
   };
@@ -196,6 +202,9 @@ function parseMarkdownBlocks(rawText: string): React.ReactNode[] {
       if (currentListType && currentListType !== 'ol') {
         flushList();
       }
+      if (!currentListType) {
+        currentListStart = parseInt(olMatch[1], 10) || 1;
+      }
       currentListType = 'ol';
       currentListItems.push(olMatch[2]);
       continue;
@@ -220,10 +229,13 @@ function parseMarkdownBlocks(rawText: string): React.ReactNode[] {
       continue;
     }
 
-    // 8. Normal text line accumulation
-    if (currentListType) {
-      flushList();
+    // 8. If inside a list, continuation text belongs to the previous list item
+    if (currentListType && currentListItems.length > 0) {
+      currentListItems[currentListItems.length - 1] += ' ' + line.trim();
+      continue;
     }
+
+    // 9. Normal text line accumulation
     currentParagraphLines.push(line);
   }
 

@@ -187,25 +187,25 @@ export const App: React.FC = () => {
         {/* Top 6 Agents Status Cards */}
         <AgentStatusOverlay />
 
-        {/* Middle Section: Game Simulation + Task Panel */}
+        {/* Middle Section: Game Simulation + Office Dialogue Stream */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-start">
           {/* Phaser Pixel Office Game World */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center">
             <PhaserGame />
           </div>
 
-          {/* Task Lifecycle & Execution Panel */}
+          {/* Office Dialogue Stream (Global Chat Panel) */}
           <div className="lg:col-span-5 h-[480px]">
-            <TaskPanel />
+            <GlobalChatPanel />
           </div>
         </div>
 
-        {/* Bottom Section: Dialogue Stream + Activity Stream */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 h-[280px] max-h-[300px] min-h-0">
-          <div className="lg:col-span-6 h-full min-h-0">
-            <GlobalChatPanel />
+        {/* Bottom Section: Task Dispatch & Autonomous Engine + Realtime Activity Log */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 h-auto lg:h-[420px] lg:max-h-[440px] min-h-0">
+          <div className="lg:col-span-6 h-[420px] lg:h-full min-h-0">
+            <TaskPanel />
           </div>
-          <div className="lg:col-span-6 h-full min-h-0">
+          <div className="lg:col-span-6 h-[420px] lg:h-full min-h-0">
             <ActivitySidePanel />
           </div>
         </div>
