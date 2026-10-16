@@ -76,23 +76,23 @@ export const GlobalChatPanel: React.FC = () => {
   };
 
   const getSenderColor = (sender: string) => {
-    if (sender === 'boss') return 'text-amber-400 font-bold';
-    if (sender === 'agent_leader') return 'text-sky-400 font-bold';
-    if (sender === 'agent_research') return 'text-purple-400 font-bold';
-    if (sender === 'agent_engineering') return 'text-emerald-400 font-bold';
-    if (sender === 'agent_automation') return 'text-orange-400 font-bold';
-    if (sender === 'agent_qa') return 'text-pink-400 font-bold';
-    if (sender === 'agent_memory') return 'text-cyan-400 font-bold';
-    return 'text-slate-400';
+    if (sender === 'boss') return 'text-[#CCF12B] font-pixel-heading font-bold';
+    if (sender === 'agent_leader') return 'text-[#36B9ED] font-pixel-heading font-bold';
+    if (sender === 'agent_research') return 'text-[#36B9ED] font-pixel-heading font-bold';
+    if (sender === 'agent_engineering') return 'text-[#79D693] font-pixel-heading font-bold';
+    if (sender === 'agent_automation') return 'text-[#F5BC4D] font-pixel-heading font-bold';
+    if (sender === 'agent_qa') return 'text-[#F16E5E] font-pixel-heading font-bold';
+    if (sender === 'agent_memory') return 'text-[#B6BFAE] font-pixel-heading font-bold';
+    return 'text-[#869184]';
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg min-h-0 overflow-hidden relative">
+    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2.5 sm:p-3 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden relative">
       {/* Header Bar with Chat Session Info & Thread Controls */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2 shrink-0 gap-2">
+      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-xs font-bold tracking-wider text-amber-400 shrink-0">
-            OFFICE DIALOGUE STREAM
+          <h2 className="text-xs font-bold tracking-wider text-[#CCF12B] font-pixel-heading shrink-0 flex items-center gap-1.5">
+            <span>▶</span> OFFICE DIALOGUE STREAM
           </h2>
 
           {/* Active Session Title (Editable) */}
@@ -107,21 +107,21 @@ export const GlobalChatPanel: React.FC = () => {
                     if (e.key === 'Enter') handleSaveTitle();
                     if (e.key === 'Escape') setIsEditingTitle(false);
                   }}
-                  className="bg-slate-950 border border-sky-500 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none w-36"
+                  className="bg-[#0D110F] border-2 border-[#CCF12B] px-1.5 py-0.5 text-[11px] text-[#F0F1DD] focus:outline-none w-36 font-pixel-body"
                   autoFocus
                 />
                 <button
                   type="button"
                   onClick={handleSaveTitle}
-                  className="text-[10px] text-emerald-400 hover:text-emerald-300 px-1 py-0.5 rounded bg-slate-800"
+                  className="text-[10px] text-[#090B0A] bg-[#CCF12B] hover:bg-[#dcf34e] px-1.5 py-0.5 font-pixel-heading font-bold cursor-pointer"
                   title="Save title"
                 >
-                  Save
+                  SAVE
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsEditingTitle(false)}
-                  className="text-[10px] text-slate-400 hover:text-slate-200 px-1 py-0.5 rounded bg-slate-800"
+                  className="text-[10px] text-[#F0F1DD] bg-[#1B211D] border border-[#465047] hover:bg-[#465047] px-1.5 py-0.5 font-pixel-heading cursor-pointer"
                   title="Cancel"
                 >
                   ✕
@@ -131,7 +131,7 @@ export const GlobalChatPanel: React.FC = () => {
               <div className="flex items-center gap-1 min-w-0 group">
                 <span
                   onClick={() => setIsEditingTitle(true)}
-                  className="text-[10px] text-sky-300 font-medium truncate max-w-[140px] sm:max-w-[180px] cursor-pointer hover:text-sky-200 hover:underline bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800"
+                  className="text-[10px] text-[#36B9ED] font-pixel-heading truncate max-w-[140px] sm:max-w-[180px] cursor-pointer hover:underline bg-[#0D110F] px-1.5 py-0.5 border border-[#465047]"
                   title="Click to rename chat thread"
                 >
                   {activeSession?.title || 'General Office Workspace'}
@@ -139,10 +139,10 @@ export const GlobalChatPanel: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditingTitle(true)}
-                  className="text-[9px] text-slate-500 hover:text-slate-300 opacity-60 group-hover:opacity-100 transition-opacity"
+                  className="text-[9px] text-[#869184] hover:text-[#F0F1DD] font-pixel-heading opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer"
                   title="Rename title"
                 >
-                  edit
+                  [EDIT]
                 </button>
               </div>
             )}
@@ -154,51 +154,51 @@ export const GlobalChatPanel: React.FC = () => {
           <button
             type="button"
             onClick={handleNewChat}
-            className="text-[10px] font-bold text-slate-900 bg-sky-400 hover:bg-sky-300 px-2 py-0.5 rounded transition-colors shadow-xs cursor-pointer flex items-center gap-1"
+            className="pixel-btn pixel-btn-primary text-[10px] py-0.5 px-2"
             title="Create a new clean chat thread (isolated context)"
           >
-            + New Chat
+            + NEW CHAT
           </button>
 
           <button
             type="button"
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-            className={`text-[10px] font-medium px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+            className={`pixel-btn text-[10px] py-0.5 px-2 ${
               isHistoryOpen
-                ? 'bg-amber-950 text-amber-300 border-amber-600/60'
-                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
+                : 'pixel-btn-ghost'
             }`}
             title="View chat history threads"
           >
-            Threads ({sessions.length})
+            THREADS ({sessions.length})
           </button>
         </div>
       </div>
 
       {/* History Threads Dropdown Drawer */}
       {isHistoryOpen && (
-        <div className="absolute top-10 right-3 z-30 w-72 bg-slate-950 border border-slate-700 rounded-lg shadow-2xl p-2 animate-fade-in text-[11px]">
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 mb-1.5">
-            <span className="font-bold text-amber-400 text-[10px] uppercase tracking-wider">
-              Workspace Chat Threads
+        <div className="absolute top-11 right-3 z-30 w-80 bg-[#121615] border-2 border-[#899584] shadow-[4px_4px_0_#000000] p-2.5 text-[11px] font-pixel-body">
+          <div className="flex items-center justify-between pb-1.5 border-b border-[#465047] mb-2">
+            <span className="font-pixel-heading font-bold text-[#CCF12B] text-[10px] uppercase tracking-wider">
+              WORKSPACE CHAT THREADS
             </span>
             <button
               type="button"
               onClick={() => setIsHistoryOpen(false)}
-              className="text-slate-400 hover:text-white text-xs font-bold"
+              className="text-[#869184] hover:text-[#F0F1DD] text-xs font-pixel-heading font-bold cursor-pointer"
             >
-              ✕
+              [✕]
             </button>
           </div>
 
-          <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+          <div className="max-h-56 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
             {sessions.map((sess) => (
               <div
                 key={sess.id}
-                className={`flex items-center justify-between p-1.5 rounded transition-colors ${
+                className={`flex items-center justify-between p-2 border transition-colors ${
                   sess.id === activeSessionId
-                    ? 'bg-sky-950/70 border border-sky-800/80 text-white'
-                    : 'hover:bg-slate-900 text-slate-300 border border-transparent'
+                    ? 'bg-[#1B211D] border-[#CCF12B] text-[#F0F1DD] shadow-[1px_1px_0_#000]'
+                    : 'bg-[#0D110F] border-[#465047] hover:border-[#899584] text-[#B6BFAE]'
                 }`}
               >
                 <div
@@ -208,10 +208,10 @@ export const GlobalChatPanel: React.FC = () => {
                     setIsHistoryOpen(false);
                   }}
                 >
-                  <div className="font-semibold truncate text-[11px]" title={sess.title}>
+                  <div className="font-pixel-heading font-semibold truncate text-[11px]" title={sess.title}>
                     {sess.title}
                   </div>
-                  <div className="text-[9px] text-slate-500 flex items-center gap-1.5">
+                  <div className="text-[10px] font-pixel-mono text-[#869184] flex items-center gap-1.5 mt-0.5">
                     <span>{new Date(sess.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
                     <span>•</span>
                     <span>{sess.messageCount} msgs</span>
@@ -227,10 +227,10 @@ export const GlobalChatPanel: React.FC = () => {
                         deleteSession(sess.id);
                       }
                     }}
-                    className="text-[11px] text-slate-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                    className="text-[10px] font-pixel-heading text-[#869184] hover:text-[#F16E5E] px-1 py-0.5 hover:bg-[#1B211D] border border-transparent hover:border-[#F16E5E] transition-colors cursor-pointer ml-2"
                     title="Delete chat thread"
                   >
-                    ✕
+                    [DEL]
                   </button>
                 )}
               </div>
@@ -242,42 +242,42 @@ export const GlobalChatPanel: React.FC = () => {
       {/* Message List with Auto-Scroll & Text Selectability */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1.5 custom-scrollbar select-text">
         {isLoading ? (
-          <div className="text-center py-6 text-slate-500 text-[11px]">Loading chat history...</div>
+          <div className="text-center py-8 text-[#869184] text-xs font-pixel-mono">
+            &gt; Loading encrypted chat threads...
+          </div>
         ) : messages.length === 0 ? (
-          <div className="text-center py-6 text-slate-500 text-[11px]">
-            New chat started. Type a prompt or mention @Zen to begin.
+          <div className="text-center py-8 text-[#869184] text-xs font-pixel-mono">
+            &gt; Session initialized. Enter directive or mention @Zen to orchestrate.
           </div>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={`p-2.5 rounded border select-text ${
+              className={`p-2.5 border-2 select-text ${
                 m.sender === 'boss'
-                  ? 'bg-amber-950/20 border-amber-900/40 ml-4'
-                  : 'bg-slate-950 border-slate-800 mr-4'
+                  ? 'bg-[#1B211D] border-[#899584] ml-4 shadow-[2px_2px_0_#000000]'
+                  : 'bg-[#0D110F] border-[#465047] mr-4 shadow-[2px_2px_0_#000000]'
               }`}
             >
-              <div className="flex items-center justify-between mb-1 select-none">
-                <span className={`text-[11px] ${getSenderColor(m.sender)}`}>{m.senderName}</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-slate-500">
+              <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#465047]/60 select-none">
+                <span className={`text-[11px] ${getSenderColor(m.sender)}`}>
+                  {m.senderName.toUpperCase()}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-pixel-mono text-[#869184]">
                     {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <button
                     type="button"
                     onClick={() => handleCopyMessage(m.id, m.text)}
                     title="Copy full message text"
-                    className="text-[10px] text-slate-400 hover:text-white transition-colors px-1 py-0.5 rounded hover:bg-slate-800 flex items-center gap-0.5 cursor-pointer select-none"
+                    className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-1.5 py-0.2 transition-colors cursor-pointer select-none"
                   >
-                    {copiedId === m.id ? (
-                      <span className="text-emerald-400 font-sans font-semibold">Copied</span>
-                    ) : (
-                      <span>Copy</span>
-                    )}
+                    {copiedId === m.id ? 'COPIED' : 'COPY'}
                   </button>
                 </div>
               </div>
-              <div className="mt-1 select-text cursor-text">
+              <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13px] leading-relaxed">
                 <MarkdownRenderer content={m.text} />
               </div>
             </div>
@@ -287,18 +287,18 @@ export const GlobalChatPanel: React.FC = () => {
       </div>
 
       {/* Input Form */}
-      <form onSubmit={handleSend} className="mt-2 pt-2 border-t border-slate-800 flex gap-2 shrink-0">
+      <form onSubmit={handleSend} className="mt-2 pt-2 border-t-2 border-[#465047] flex gap-2 shrink-0">
         <select
           value={recipient}
           onChange={(e) => setRecipient(e.target.value as AgentId)}
-          className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 focus:outline-none"
+          className="bg-[#0D110F] border-2 border-[#465047] px-2 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
         >
-          <option value={AGENT_IDS.LEADER}>Zen (Leader)</option>
-          <option value={AGENT_IDS.RESEARCH}>Dre (Research)</option>
-          <option value={AGENT_IDS.ENGINEERING}>Iky (Engineering)</option>
-          <option value={AGENT_IDS.AUTOMATION}>Gus (Automation)</option>
-          <option value={AGENT_IDS.QA}>Rai (QA & Critic)</option>
-          <option value={AGENT_IDS.MEMORY}>Dhea (Memory)</option>
+          <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
+          <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
+          <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
+          <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
+          <option value={AGENT_IDS.QA}>RAI (QA & CRITIC)</option>
+          <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
         </select>
 
         <input
@@ -307,17 +307,16 @@ export const GlobalChatPanel: React.FC = () => {
           placeholder="Speak to agent or mention @Zen, @Iky, @Dre, @Gus..."
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-[11px] text-white focus:outline-none focus:border-amber-500"
+          className="flex-1 bg-[#0D110F] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
         />
 
         <button
           type="submit"
-          className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded text-[11px] transition-colors cursor-pointer"
+          className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
         >
-          Send
+          SEND ▶
         </button>
       </form>
     </div>
   );
 };
-

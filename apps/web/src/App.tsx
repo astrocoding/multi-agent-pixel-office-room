@@ -137,53 +137,58 @@ export const App: React.FC = () => {
   }, [setAgents, updateAgentStatus, setTasks, addTask, updateTask, addActivity, setActivities, addMessage, fetchSessions]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Header Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-2.5 flex items-center justify-between">
+    <div className="min-h-screen bg-[#090B0A] text-[#F0F1DD] flex flex-col font-pixel-body">
+      {/* Top Header Bar - Authentic Retro Terminal Control Bar */}
+      <header className="bg-[#121615] border-b-2 border-[#465047] px-4 py-2 flex items-center justify-between shrink-0 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center font-mono font-bold text-xs text-white shadow">
+          <div className="w-8 h-8 bg-[#1B211D] border-2 border-[#CCF12B] flex items-center justify-center font-pixel-heading font-bold text-xs text-[#CCF12B] shadow-[2px_2px_0_#000000]">
             AO
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-wider text-white font-mono flex items-center gap-2">
-              AGENT OFFICE ROOM <span className="text-[10px] bg-sky-900/60 text-sky-400 px-1.5 py-0.5 rounded border border-sky-700/60 font-mono">v1.0</span>
+            <h1 className="text-xs sm:text-sm font-bold tracking-wider text-[#F0F1DD] font-pixel-heading flex items-center gap-2">
+              AGENT OFFICE ROOM{' '}
+              <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1.5 py-0.5 border border-[#465047] font-pixel-heading">
+                v1.0
+              </span>
             </h1>
-            <p className="text-[11px] text-slate-400 font-mono">2D Pixel Simulation • Multi-Agent Autonomous Automation Runtime</p>
+            <p className="text-[11px] text-[#B6BFAE] font-pixel-body">
+              2D Pixel Simulation • Multi-Agent Autonomous Automation Runtime
+            </p>
           </div>
         </div>
 
         {/* Status Pill & Controls Guide */}
-        <div className="flex items-center gap-4 text-xs font-mono">
-          <div className="hidden lg:flex items-center gap-2 text-slate-400 text-[11px] bg-slate-950 px-3 py-1 rounded border border-slate-800">
-            <span className="text-amber-400 font-bold">WALK:</span> WASD / Arrows
-            <span className="text-slate-600">|</span>
-            <span className="text-sky-400 font-bold">INTERACT:</span> [E] or Click NPC
+        <div className="flex items-center gap-3 text-xs font-pixel-heading">
+          <div className="hidden lg:flex items-center gap-2 text-[#B6BFAE] text-[10px] bg-[#0D110F] px-2.5 py-1 border border-[#465047]">
+            <span className="text-[#CCF12B] font-bold">WALK:</span> WASD / ARROWS
+            <span className="text-[#465047]">|</span>
+            <span className="text-[#36B9ED] font-bold">INTERACT:</span> [E] OR CLICK NPC
           </div>
 
           {/* AI Model Auto-Router Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-[11px]">
-            <span className="text-purple-400 font-bold">AUTO-ROUTER:</span>
-            <span className="text-emerald-400 font-semibold">{activeModel}</span>
-            <span className="text-[9px] bg-purple-950/80 text-purple-300 border border-purple-800 px-1 py-0.5 rounded uppercase">
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#0D110F] border border-[#465047] text-[10px]">
+            <span className="text-[#36B9ED] font-bold">ROUTER:</span>
+            <span className="text-[#F0F1DD] font-semibold">{activeModel}</span>
+            <span className="text-[9px] bg-[#1B211D] text-[#CCF12B] border border-[#465047] px-1 py-0.2 uppercase">
               {modelTier}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-[#0D110F] border border-[#465047] px-2.5 py-1">
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                isConnected ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]' : 'bg-rose-500'
+              className={`w-2 h-2 ${
+                isConnected ? 'bg-[#79D693]' : 'bg-[#F16E5E]'
               }`}
             />
-            <span className={`text-[11px] font-bold ${isConnected ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {isConnected ? 'RUNTIME CONNECTED' : 'OFFLINE'}
+            <span className={`text-[10px] font-bold ${isConnected ? 'text-[#79D693]' : 'text-[#F16E5E]'}`}>
+              {isConnected ? '● RUNTIME CONNECTED' : '■ OFFLINE'}
             </span>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 p-4 max-w-[1700px] w-full mx-auto flex flex-col gap-3">
+      <main className="flex-1 p-3 sm:p-4 max-w-[1750px] w-full mx-auto flex flex-col gap-3">
         {/* Top 6 Agents Status Cards */}
         <AgentStatusOverlay />
 

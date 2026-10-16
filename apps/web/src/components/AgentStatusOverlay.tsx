@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAgentStore } from '../stores/useAgentStore.js';
-import { AGENT_CONFIGS, AGENT_IDS, type AgentId, type AgentStateType } from '@agent-office/shared';
+import { AGENT_CONFIGS, type AgentId, type AgentStateType } from '@agent-office/shared';
 
 export const AgentStatusOverlay: React.FC = () => {
   const { agents, setSelectedAgentId, nearbyAgentId } = useAgentStore();
@@ -8,22 +8,22 @@ export const AgentStatusOverlay: React.FC = () => {
   const getStateBadge = (state: AgentStateType) => {
     switch (state) {
       case 'working':
-        return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse';
+        return 'bg-[#1B211D] text-[#79D693] border-[#79D693]';
       case 'thinking':
-        return 'bg-sky-500/20 text-sky-400 border-sky-500/40 animate-pulse';
+        return 'bg-[#1B211D] text-[#36B9ED] border-[#36B9ED]';
       case 'reviewing':
-        return 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/40';
+        return 'bg-[#1B211D] text-[#F5BC4D] border-[#F5BC4D]';
       case 'reporting':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+        return 'bg-[#1B211D] text-[#36B9ED] border-[#36B9ED]';
       case 'blocked':
-        return 'bg-rose-500/20 text-rose-400 border-rose-500/40';
+        return 'bg-[#1B211D] text-[#F16E5E] border-[#F16E5E]';
       default:
-        return 'bg-slate-800 text-slate-400 border-slate-700';
+        return 'bg-[#0D110F] text-[#869184] border-[#465047]';
     }
   };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-2 font-mono text-xs">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 font-pixel-body text-xs select-none">
       {(Object.keys(AGENT_CONFIGS) as AgentId[]).map((id) => {
         const cfg = AGENT_CONFIGS[id];
         const runtime = agents[id];
@@ -33,27 +33,42 @@ export const AgentStatusOverlay: React.FC = () => {
           <div
             key={id}
             onClick={() => setSelectedAgentId(id)}
-            className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+            className={`p-2 border-2 transition-transform cursor-pointer relative ${
               isNearby
-                ? 'bg-sky-950/40 border-sky-400 shadow-md scale-102 ring-1 ring-sky-400'
-                : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                ? 'bg-[#1B211D] border-[#CCF12B] shadow-[3px_3px_0_#000000] translate-x-[-1px] translate-y-[-1px]'
+                : 'bg-[#121615] border-[#465047] hover:border-[#899584] shadow-[2px_2px_0_#000000] active:translate-x-[1px] active:translate-y-[1px]'
             }`}
           >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-bold text-slate-100 text-[11px] truncate">{cfg.name.split(' ')[0]}</span>
-              <span className={`text-[9px] px-1.5 py-0.5 rounded border uppercase font-semibold ${getStateBadge(runtime?.state || 'idle')}`}>
+            <div className="flex items-center justify-between mb-1 gap-1">
+              <span className="font-pixel-heading font-bold text-[#F0F1DD] text-[11px] truncate tracking-wide">
+                {cfg.name.split(' ')[0].toUpperCase()}
+              </span>
+              <span
+                className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold shrink-0 ${getStateBadge(
+                  runtime?.state || 'idle'
+                )}`}
+              >
                 {runtime?.state || 'idle'}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 truncate mb-1">{cfg.role}</p>
-            {runtime?.currentThought && (
-              <p className="text-[9px] text-sky-300 italic truncate font-sans">
-                "{runtime.currentThought}"
+
+            <p className="text-[10px] text-[#B6BFAE] truncate font-pixel-body mb-0.5">
+              {cfg.role}
+            </p>
+
+            {runtime?.currentThought ? (
+              <p className="text-[10.5px] text-[#36B9ED] truncate font-pixel-mono leading-tight">
+                &gt; {runtime.currentThought}
+              </p>
+            ) : (
+              <p className="text-[10.5px] text-[#869184] truncate font-pixel-mono leading-tight">
+                &gt; Standby at station
               </p>
             )}
+
             {isNearby && (
-              <div className="mt-1 text-[9px] text-amber-400 font-bold flex items-center gap-1">
-                In Range [E]
+              <div className="mt-1 text-[9px] text-[#CCF12B] font-pixel-heading font-bold flex items-center gap-1 border-t border-[#CCF12B]/40 pt-1">
+                <span>▶</span> IN RANGE [E]
               </div>
             )}
           </div>
@@ -62,4 +77,3 @@ export const AgentStatusOverlay: React.FC = () => {
     </div>
   );
 };
-
