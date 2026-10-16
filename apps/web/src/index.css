@@ -1,12 +1,56 @@
 @import "tailwindcss";
 
+@theme {
+  --font-pixel-heading: "Silkscreen", "Press Start 2P", monospace;
+  --font-pixel-title: "Press Start 2P", "Silkscreen", monospace;
+  --font-pixel-body: "Pixelify Sans", "VT323", monospace;
+  --font-pixel-terminal: "VT323", monospace, "Courier New";
+  --font-pixel-mono: "VT323", monospace, "Courier New";
+
+  --color-pixel-bg-root: #090b0a;
+  --color-pixel-bg-surface: #121615;
+  --color-pixel-bg-raised: #1b211d;
+  --color-pixel-bg-input: #0d110f;
+
+  --color-pixel-border-default: #465047;
+  --color-pixel-border-strong: #899584;
+
+  --color-pixel-text-primary: #f0f1dd;
+  --color-pixel-text-secondary: #b6bfae;
+  --color-pixel-text-muted: #869184;
+
+  --color-pixel-accent: #ccf12b;
+  --color-pixel-accent-secondary: #36b9ed;
+
+  --color-pixel-success: #79d693;
+  --color-pixel-warning: #f5bc4d;
+  --color-pixel-error: #f16e5e;
+  --color-pixel-neutral: #aeb8ac;
+}
+
 @layer base {
+  /* Strict 0-radius policy across entire application */
+  *,
+  *::before,
+  *::after {
+    border-radius: 0 !important;
+    box-sizing: border-box;
+  }
+
   body {
     margin: 0;
     padding: 0;
-    background-color: #020617;
-    color: #f8fafc;
+    background-color: #090b0a;
+    color: #f0f1dd;
+    font-family: var(--font-pixel-body), "VT323", monospace;
     overflow-x: hidden;
+    position: relative;
+    /* Subtle retro CRT monitor feel without blurring */
+    background-image: linear-gradient(
+      rgba(18, 22, 21, 0.4) 1px,
+      transparent 1px
+    );
+    background-size: 100% 4px;
   }
 
   /* Pixel art rendering rules for Phaser and pixel sprites */
@@ -16,28 +60,45 @@
     image-rendering: pixelated;
     image-rendering: crisp-edges;
   }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-pixel-heading), monospace;
+    letter-spacing: 0.05em;
+  }
 }
 
-/* Custom retro scrollbar */
+/* Sharp retro pixel scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #0d110f;
+  border-left: 1px solid #465047;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: #465047;
+  border: 1px solid #1b211d;
+  border-radius: 0 !important;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #899584;
 }
 
-/* Ensure text selection works properly across chat and modals */
+/* Text selection with retro lime accent */
+::selection {
+  background-color: #ccf12b;
+  color: #090b0a;
+}
+
+::-moz-selection {
+  background-color: #ccf12b;
+  color: #090b0a;
+}
+
 .select-text,
 .markdown-content,
 .markdown-content * {
@@ -45,13 +106,146 @@
   -webkit-user-select: text !important;
 }
 
-/* High-contrast modern selection color for dark theme */
-::selection {
-  background-color: #0284c7;
-  color: #ffffff;
+/* Reusable Pixel Component Frame Tokens */
+.pixel-frame {
+  background-color: #121615;
+  border: 2px solid #465047;
+  box-shadow: 2px 2px 0 #000000;
+  border-radius: 0 !important;
 }
 
-::-moz-selection {
-  background-color: #0284c7;
-  color: #ffffff;
+.pixel-frame-strong {
+  background-color: #121615;
+  border: 2px solid #899584;
+  box-shadow: 3px 3px 0 #000000;
+  border-radius: 0 !important;
+}
+
+.pixel-frame-raised {
+  background-color: #1b211d;
+  border: 2px solid #465047;
+  box-shadow: 2px 2px 0 #000000;
+  border-radius: 0 !important;
+}
+
+.pixel-box {
+  border: 1px solid #465047;
+  background-color: #0d110f;
+  border-radius: 0 !important;
+}
+
+/* Pixel Buttons */
+.pixel-btn {
+  font-family: var(--font-pixel-heading), monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 2px solid;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000000;
+  border-radius: 0 !important;
+  transition: transform 0.05s ease, background-color 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pixel-btn:hover {
+  box-shadow: 3px 3px 0 #000000;
+}
+
+.pixel-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #000000;
+}
+
+.pixel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.pixel-btn-primary {
+  background-color: #ccf12b;
+  border-color: #ccf12b;
+  color: #090b0a;
+}
+
+.pixel-btn-primary:hover:not(:disabled) {
+  background-color: #e2f75a;
+  border-color: #e2f75a;
+}
+
+.pixel-btn-secondary {
+  background-color: #1b211d;
+  border-color: #36b9ed;
+  color: #36b9ed;
+}
+
+.pixel-btn-secondary:hover:not(:disabled) {
+  background-color: #36b9ed;
+  color: #090b0a;
+}
+
+.pixel-btn-ghost {
+  background-color: transparent;
+  border-color: #465047;
+  color: #f0f1dd;
+}
+
+.pixel-btn-ghost:hover:not(:disabled) {
+  background-color: #1b211d;
+  border-color: #899584;
+}
+
+.pixel-btn-danger {
+  background-color: #1b211d;
+  border-color: #f16e5e;
+  color: #f16e5e;
+}
+
+.pixel-btn-danger:hover:not(:disabled) {
+  background-color: #f16e5e;
+  color: #090b0a;
+}
+
+/* Pixel Input & Textarea */
+.pixel-input {
+  background-color: #0d110f;
+  border: 2px solid #465047;
+  color: #f0f1dd;
+  font-family: var(--font-pixel-body), monospace;
+  font-size: 13px;
+  border-radius: 0 !important;
+  box-shadow: inset 1px 1px 0 #000000;
+  transition: border-color 0.1s ease;
+}
+
+.pixel-input:focus {
+  outline: none;
+  border-color: #ccf12b;
+  box-shadow: 2px 2px 0 #000000;
+}
+
+.pixel-input::placeholder {
+  color: #869184;
+  font-family: var(--font-pixel-body), monospace;
+}
+
+/* Pixel Badge */
+.pixel-badge {
+  font-family: var(--font-pixel-heading), monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border: 1px solid;
+  border-radius: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
