@@ -143,63 +143,66 @@ export const TaskPanel: React.FC = () => {
     });
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40';
+        return 'bg-[#1B211D] text-[#79D693] border-[#79D693]';
       case 'in_progress':
       case 'analyzing':
       case 'planned':
-        return 'text-amber-400 bg-amber-950/60 border-amber-500/40';
+        return 'bg-[#1B211D] text-[#F5BC4D] border-[#F5BC4D]';
       case 'waiting_approval':
-        return 'text-yellow-300 bg-yellow-950/70 border-yellow-500/50 animate-pulse';
+        return 'bg-[#1B211D] text-[#F5BC4D] border-2 border-[#F5BC4D]';
       case 'reviewing':
-        return 'text-fuchsia-400 bg-fuchsia-950/60 border-fuchsia-500/40';
+        return 'bg-[#1B211D] text-[#36B9ED] border-[#36B9ED]';
       case 'failed':
-        return 'text-rose-400 bg-rose-950/60 border-rose-500/40';
+        return 'bg-[#1B211D] text-[#F16E5E] border-[#F16E5E]';
       default:
-        return 'text-slate-400 bg-slate-900 border-slate-700';
+        return 'bg-[#0D110F] text-[#869184] border-[#465047]';
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 shadow-lg min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2.5">
-        <h2 className="text-sm font-bold tracking-wider text-sky-400 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-          TASK DISPATCH & AUTONOMOUS ENGINE
+    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2.5 sm:p-3 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden">
+      {/* Title Header */}
+      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0">
+        <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5">
+          <span>▶</span> TASK DISPATCH &amp; AUTONOMOUS ENGINE
         </h2>
-        <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-          {tasks.length} Tasks
+        <span className="text-[10px] font-pixel-mono text-[#869184] bg-[#0D110F] border border-[#465047] px-1.5 py-0.5">
+          {tasks.length} TASKS
         </span>
       </div>
 
       {/* Task Creation Form */}
-      <form onSubmit={handleSubmit} className="space-y-2 mb-3 bg-slate-950/70 p-2.5 rounded border border-slate-800/80">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-2 mb-2.5 bg-[#0D110F] p-2.5 border-2 border-[#465047] shadow-[1px_1px_0_#000]"
+      >
         <div>
-          <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
-            Task Directive:
+          <label className="block text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-1">
+            TASK DIRECTIVE:
           </label>
           <input
             type="text"
             placeholder="e.g. Build authentication pipeline, migrate schema, run tests"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-sky-500"
+            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
             required
           />
         </div>
 
         <div>
-          <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
-            Execution Details & Technical Scope:
+          <label className="block text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-1">
+            EXECUTION DETAILS &amp; TECHNICAL SCOPE:
           </label>
           <textarea
             rows={2}
             placeholder="Specify technical constraints, modules, bash commands, techstack, or dependencies..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-sky-500 resize-none"
+            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none"
             required
           />
         </div>
@@ -207,15 +210,15 @@ export const TaskPanel: React.FC = () => {
         {/* Attachment Upload & Pill List */}
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-[10px] text-slate-400 uppercase tracking-wider">
-              Multimodal Attachments:
+            <label className="text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider">
+              MULTIMODAL ATTACHMENTS:
             </label>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-700 hover:border-sky-500 transition-colors"
+              className="pixel-btn pixel-btn-ghost text-[9.5px] py-0.5 px-2"
             >
-              Attach Files / Screenshots
+              + ATTACH FILES
             </button>
             <input
               ref={fileInputRef}
@@ -228,21 +231,21 @@ export const TaskPanel: React.FC = () => {
           </div>
 
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5 max-h-16 overflow-y-auto">
+            <div className="flex flex-wrap gap-1.5 mt-1.5 max-h-16 overflow-y-auto custom-scrollbar">
               {attachments.map((att, idx) => (
                 <span
                   key={idx}
-                  className="inline-flex items-center gap-1 bg-slate-900/90 text-slate-300 border border-slate-700 px-2 py-0.5 rounded text-[10px]"
+                  className="inline-flex items-center gap-1.5 bg-[#1B211D] text-[#F0F1DD] border border-[#465047] px-2 py-0.5 text-[10px] font-pixel-mono"
                 >
-                  <span className="text-[9px] font-mono font-semibold text-sky-400 bg-slate-850 px-1 py-0.5 rounded border border-slate-700">
+                  <span className="text-[8.5px] font-pixel-heading text-[#CCF12B] bg-[#0D110F] px-1 py-0.2 border border-[#465047]">
                     {att.mimeType.startsWith('image/') ? 'IMG' : 'DOC'}
                   </span>
                   <span className="max-w-[120px] truncate">{att.name}</span>
-                  <span className="text-slate-500 text-[9px]">({formatFileSize(att.size)})</span>
+                  <span className="text-[#869184] text-[9px]">({formatFileSize(att.size)})</span>
                   <button
                     type="button"
                     onClick={() => removeAttachment(idx)}
-                    className="text-slate-500 hover:text-rose-400 font-bold ml-0.5"
+                    className="text-[#869184] hover:text-[#F16E5E] font-bold font-pixel-heading cursor-pointer ml-1"
                   >
                     ×
                   </button>
@@ -254,51 +257,53 @@ export const TaskPanel: React.FC = () => {
 
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400">Assign:</span>
+            <span className="text-[10px] font-pixel-heading text-[#B6BFAE]">DELEGATE:</span>
             <select
               value={targetAgent}
               onChange={(e) => setTargetAgent(e.target.value as AgentId)}
-              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-white focus:outline-none"
+              className="bg-[#121615] border-2 border-[#465047] px-2 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
             >
-              <option value={AGENT_IDS.LEADER}>Zen (Leader - Chief of Staff)</option>
-              <option value={AGENT_IDS.ENGINEERING}>Iky (Senior Engineer - Shell/Code)</option>
-              <option value={AGENT_IDS.RESEARCH}>Dre (Research Specialist)</option>
-              <option value={AGENT_IDS.AUTOMATION}>Gus (Automation & Pipelines)</option>
-              <option value={AGENT_IDS.QA}>Rai (QA & Critic)</option>
-              <option value={AGENT_IDS.MEMORY}>Dhea (Knowledge & Memory)</option>
+              <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
+              <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER - CODE/SHELL)</option>
+              <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
+              <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION &amp; WORKFLOWS)</option>
+              <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC SPECIALIST)</option>
+              <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
             </select>
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold rounded shadow transition-colors flex items-center gap-1.5"
+            className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
           >
-            {isSubmitting ? 'Dispatching...' : 'Dispatch Directive'}
+            {isSubmitting ? 'DISPATCHING...' : 'EXECUTE DIRECTIVE ▶'}
           </button>
         </div>
       </form>
 
-      {/* Clarification Request Banner (When Zen asks Boss for clarification) */}
+      {/* Clarification Request Banner */}
       {isWaitingClarification && clarification && (
-        <div className="mb-3 p-2.5 rounded bg-amber-950/50 border border-amber-500/60 shadow-md animate-fade-in">
+        <div className="mb-2.5 p-2.5 bg-[#1B211D] border-2 border-[#F5BC4D] shadow-[2px_2px_0_#000]">
           <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs">
-              <span className="text-[10px] bg-amber-900/80 px-1 py-0.5 rounded border border-amber-600/60 font-mono">[CLARIFICATION]</span>
-              <span>Zen Requires Clarification from Boss</span>
+            <div className="flex items-center gap-1.5 text-[#F5BC4D] font-pixel-heading font-bold text-xs">
+              <span className="text-[9px] bg-[#0D110F] px-1 py-0.2 border border-[#F5BC4D]">
+                [CLARIFICATION REQUIRED]
+              </span>
+              <span>Zen Paused For Boss Input</span>
             </div>
-            <span className="text-[9px] bg-amber-900/60 text-amber-200 px-1.5 py-0.5 rounded border border-amber-700/60">
-              PAUSED FOR INPUT
+            <span className="text-[9px] font-pixel-heading bg-[#0D110F] text-[#F5BC4D] px-1.5 py-0.5 border border-[#F5BC4D]">
+              PAUSED
             </span>
           </div>
 
-          <p className="text-slate-200 text-[11px] font-semibold mb-1">
+          <p className="text-[#F0F1DD] text-xs font-semibold mb-1">
             "{clarification.question}"
           </p>
 
           {clarification.suggestedAction && (
-            <p className="text-amber-200/80 text-[10px] mb-2 italic">
-              Suggested: {clarification.suggestedAction}
+            <p className="text-[#F5BC4D] text-[10.5px] mb-2 font-pixel-mono">
+              &gt; Suggested Action: {clarification.suggestedAction}
             </p>
           )}
 
@@ -309,7 +314,7 @@ export const TaskPanel: React.FC = () => {
                   key={i}
                   type="button"
                   onClick={() => handleClarifySubmit(opt)}
-                  className="text-[10px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 border border-amber-600/40 px-2 py-0.5 rounded transition-colors"
+                  className="pixel-btn pixel-btn-ghost text-[10px] py-0.5 px-2 text-[#F5BC4D] border-[#F5BC4D]"
                 >
                   {opt}
                 </button>
@@ -320,7 +325,7 @@ export const TaskPanel: React.FC = () => {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Provide clarification or custom directive to resume..."
+              placeholder="Provide directive clarification..."
               value={clarificationReply}
               onChange={(e) => setClarificationReply(e.target.value)}
               onKeyDown={(e) => {
@@ -329,15 +334,15 @@ export const TaskPanel: React.FC = () => {
                   handleClarifySubmit();
                 }
               }}
-              className="flex-1 bg-slate-900 border border-amber-500/50 rounded px-2 py-1 text-xs text-white focus:outline-none"
+              className="flex-1 bg-[#0D110F] border-2 border-[#F5BC4D] px-2 py-1 text-xs text-[#F0F1DD] font-pixel-body focus:outline-none"
             />
             <button
               type="button"
               disabled={isClarifying}
               onClick={() => handleClarifySubmit()}
-              className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded text-[11px] transition-colors"
+              className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
             >
-              {isClarifying ? 'Submitting...' : 'Clarify & Resume'}
+              {isClarifying ? 'SUBMITTING...' : 'CLARIFY & RESUME ▶'}
             </button>
           </div>
         </div>
@@ -346,44 +351,52 @@ export const TaskPanel: React.FC = () => {
       {/* Active Task Details & Tabs */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
         {activeTask ? (
-          <div className="bg-slate-950 p-2.5 rounded border border-slate-800">
-            <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="bg-[#0D110F] p-2.5 border-2 border-[#465047] shadow-[1px_1px_0_#000]">
+            <div className="flex items-start justify-between gap-2 mb-1.5 pb-1 border-b border-[#465047]">
               <div>
-                <span className="text-[10px] text-slate-400">TASK #{activeTask.id.slice(0, 8)}</span>
-                <h3 className="font-bold text-slate-100 text-xs">{activeTask.title}</h3>
+                <span className="text-[10px] font-pixel-mono text-[#869184]">
+                  TASK #{activeTask.id.slice(0, 8).toUpperCase()}
+                </span>
+                <h3 className="font-pixel-heading font-bold text-[#F0F1DD] text-xs">
+                  {activeTask.title}
+                </h3>
               </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] border font-bold ${getStatusColor(activeTask.status)}`}>
+              <span
+                className={`px-1.5 py-0.5 text-[9px] border font-pixel-heading font-bold uppercase ${getStatusBadge(
+                  activeTask.status
+                )}`}
+              >
                 {activeTask.status.toUpperCase()}
               </span>
             </div>
 
-            <div className="mb-2.5">
+            <div className="mb-2 text-[#B6BFAE] font-pixel-body text-xs leading-relaxed">
               <MarkdownRenderer content={activeTask.description} />
             </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-slate-800 mb-2 gap-1 text-[11px]">
+            {/* Retro Navigation Tabs */}
+            <div className="flex border-b-2 border-[#465047] mb-2 gap-1 text-[11px] font-pixel-heading">
               <button
                 onClick={() => setActiveTab('roadmap')}
-                className={`px-2.5 py-1 font-semibold rounded-t border-b-2 transition-colors ${
+                className={`px-3 py-1 border-t-2 border-x-2 transition-colors cursor-pointer ${
                   activeTab === 'roadmap'
-                    ? 'border-sky-400 text-sky-400 bg-slate-900'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-[#CCF12B] text-[#CCF12B] bg-[#1B211D]'
+                    : 'border-transparent text-[#869184] hover:text-[#F0F1DD] hover:bg-[#121615]'
                 }`}
               >
-                Roadmap ({steps.length})
+                ROADMAP ({steps.length})
               </button>
               <button
                 onClick={() => setActiveTab('terminal')}
-                className={`px-2.5 py-1 font-semibold rounded-t border-b-2 transition-colors flex items-center gap-1 ${
+                className={`px-3 py-1 border-t-2 border-x-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'terminal'
-                    ? 'border-emerald-400 text-emerald-400 bg-slate-900'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-[#79D693] text-[#79D693] bg-[#1B211D]'
+                    : 'border-transparent text-[#869184] hover:text-[#F0F1DD] hover:bg-[#121615]'
                 }`}
               >
-                <span>Terminal Logs</span>
+                <span>TERMINAL LOGS</span>
                 {terminalLogs.length > 0 && (
-                  <span className="text-[9px] bg-emerald-950 text-emerald-400 px-1 rounded border border-emerald-800">
+                  <span className="text-[9px] font-pixel-mono bg-[#0D110F] text-[#79D693] px-1 border border-[#79D693]">
                     {terminalLogs.length}
                   </span>
                 )}
@@ -391,13 +404,13 @@ export const TaskPanel: React.FC = () => {
               {finalDeliverable && (
                 <button
                   onClick={() => setActiveTab('deliverable')}
-                  className={`px-2.5 py-1 font-semibold rounded-t border-b-2 transition-colors ${
+                  className={`px-3 py-1 border-t-2 border-x-2 transition-colors cursor-pointer ${
                     activeTab === 'deliverable'
-                      ? 'border-fuchsia-400 text-fuchsia-400 bg-slate-900'
-                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                      ? 'border-[#36B9ED] text-[#36B9ED] bg-[#1B211D]'
+                      : 'border-transparent text-[#869184] hover:text-[#F0F1DD] hover:bg-[#121615]'
                   }`}
                 >
-                  Deliverable & QA
+                  DELIVERABLE &amp; QA
                 </button>
               )}
             </div>
@@ -409,38 +422,38 @@ export const TaskPanel: React.FC = () => {
                   steps.map((s) => (
                     <div
                       key={s.stepIndex}
-                      className="p-2 rounded bg-slate-900 border border-slate-800 flex items-start justify-between gap-2 text-[11px]"
+                      className="p-2 bg-[#121615] border-2 border-[#465047] hover:border-[#899584] flex items-start justify-between gap-2 text-xs transition-colors"
                     >
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-400">#{s.stepIndex}</span>
-                          <span className="text-white font-semibold">
+                          <span className="font-pixel-heading font-bold text-[#CCF12B]">
+                            #{s.stepIndex}
+                          </span>
+                          <span className="font-pixel-heading font-semibold text-[#F0F1DD]">
                             {AGENT_CONFIGS[s.assignedTo]?.name || s.assignedTo}
                           </span>
                         </div>
-                        <p className="text-slate-300 text-[10px] mt-0.5">{s.objective}</p>
+                        <p className="text-[#B6BFAE] font-pixel-body text-[11px] mt-0.5">
+                          {s.objective}
+                        </p>
                         {s.result && (
-                          <div className="text-emerald-400/90 text-[10px] mt-1 font-mono bg-slate-950 p-1.5 rounded border border-slate-800">
+                          <div className="text-[#79D693] text-[11px] mt-1.5 font-pixel-mono bg-[#090B0A] p-2 border border-[#465047]">
                             <MarkdownRenderer content={s.result} />
                           </div>
                         )}
                       </div>
                       <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded border uppercase shrink-0 ${
-                          s.status === 'completed'
-                            ? 'text-emerald-400 bg-emerald-950/40 border-emerald-600/40'
-                            : s.status === 'in_progress'
-                              ? 'text-amber-400 bg-amber-950/40 border-amber-600/40 animate-pulse'
-                              : 'text-slate-500 bg-slate-800/40 border-slate-700/40'
-                        }`}
+                        className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold shrink-0 ${getStatusBadge(
+                          s.status
+                        )}`}
                       >
                         {s.status}
                       </span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-slate-500 text-[11px] py-3 text-center">
-                    Generating plan & breakdown...
+                  <p className="text-[#869184] font-pixel-mono text-xs py-4 text-center">
+                    &gt; Generating plan &amp; decomposing steps with Auto-Router...
                   </p>
                 )}
               </div>
@@ -453,24 +466,24 @@ export const TaskPanel: React.FC = () => {
                   terminalLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="bg-black/90 rounded border border-slate-800 p-2 font-mono text-[10px]"
+                      className="bg-[#090B0A] border-2 border-[#465047] p-2 font-pixel-mono text-[11px]"
                     >
-                      <div className="flex items-center justify-between text-slate-400 mb-1 border-b border-slate-800/80 pb-1">
+                      <div className="flex items-center justify-between text-[#869184] mb-1.5 border-b border-[#465047] pb-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-sky-400 font-bold uppercase">
+                          <span className="text-[#36B9ED] font-pixel-heading font-bold uppercase text-[10px]">
                             [{AGENT_CONFIGS[log.executedBy]?.name || log.executedBy}]
                           </span>
-                          <span className="bg-slate-800 text-slate-300 px-1 rounded text-[9px]">
+                          <span className="bg-[#1B211D] text-[#B6BFAE] px-1 border border-[#465047] text-[9.5px]">
                             {log.toolName}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-slate-500">{log.executionTimeMs}ms</span>
+                          <span className="text-[#869184] text-[10px]">{log.executionTimeMs}ms</span>
                           <span
-                            className={`px-1 py-0.2 rounded font-bold text-[9px] ${
+                            className={`px-1 py-0.2 font-pixel-heading font-bold text-[9px] border ${
                               log.exitCode === 0
-                                ? 'text-emerald-400 bg-emerald-950/70 border border-emerald-800'
-                                : 'text-rose-400 bg-rose-950/70 border border-rose-800'
+                                ? 'text-[#79D693] border-[#79D693] bg-[#0D110F]'
+                                : 'text-[#F16E5E] border-[#F16E5E] bg-[#0D110F]'
                             }`}
                           >
                             {log.exitCode === 0 ? 'EXIT 0' : `ERR ${log.exitCode}`}
@@ -478,26 +491,26 @@ export const TaskPanel: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="text-emerald-400 font-semibold mb-1 truncate">
+                      <div className="text-[#CCF12B] font-pixel-mono font-bold mb-1 truncate">
                         $ {log.command}
                       </div>
 
                       {log.stdout && (
-                        <pre className="text-slate-300 text-[9px] bg-slate-950 p-1.5 rounded overflow-x-auto whitespace-pre-wrap max-h-28">
+                        <pre className="text-[#F0F1DD] text-[10px] bg-[#0D110F] p-2 border border-[#465047] overflow-x-auto whitespace-pre-wrap max-h-32 custom-scrollbar">
                           {log.stdout}
                         </pre>
                       )}
 
                       {log.stderr && (
-                        <pre className="text-rose-400 text-[9px] bg-rose-950/30 p-1.5 rounded overflow-x-auto whitespace-pre-wrap max-h-24 mt-1 border border-rose-900/40">
+                        <pre className="text-[#F16E5E] text-[10px] bg-[#1B211D] p-2 border border-[#F16E5E] overflow-x-auto whitespace-pre-wrap max-h-24 mt-1 custom-scrollbar">
                           {log.stderr}
                         </pre>
                       )}
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-6 text-slate-500 text-[11px]">
-                    No shell or tool commands executed yet for this task.
+                  <div className="text-center py-6 text-[#869184] font-pixel-mono text-xs">
+                    &gt; No shell or container tools executed yet for this task.
                   </div>
                 )}
               </div>
@@ -506,10 +519,10 @@ export const TaskPanel: React.FC = () => {
             {/* Tab 3: Deliverable & QA */}
             {activeTab === 'deliverable' && finalDeliverable && (
               <div>
-                <div className="flex items-center justify-between mb-1.5 select-none">
+                <div className="flex items-center justify-between mb-2 select-none">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                      Executive Deliverable:
+                    <span className="text-[10px] font-pixel-heading font-bold text-[#79D693] uppercase tracking-wider">
+                      EXECUTIVE DELIVERABLE:
                     </span>
                     <button
                       type="button"
@@ -518,29 +531,25 @@ export const TaskPanel: React.FC = () => {
                         setDeliverableCopied(true);
                         setTimeout(() => setDeliverableCopied(false), 2000);
                       }}
-                      className="text-[10px] text-slate-400 hover:text-white transition-colors px-1.5 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 flex items-center gap-1 cursor-pointer"
+                      className="pixel-btn pixel-btn-ghost text-[9px] py-0.5 px-2"
                       title="Copy full deliverable text"
                     >
-                      {deliverableCopied ? (
-                        <span className="text-emerald-400 font-sans font-semibold">Copied</span>
-                      ) : (
-                        <span>Copy All</span>
-                      )}
+                      {deliverableCopied ? 'COPIED' : 'COPY ALL'}
                     </button>
                   </div>
-                  <span className="text-[10px] text-fuchsia-400 bg-fuchsia-950/60 px-1.5 py-0.5 rounded border border-fuchsia-600/40">
-                    QA Verdict: {qaVerdict}
+                  <span className="text-[9px] font-pixel-heading text-[#36B9ED] bg-[#0D110F] px-1.5 py-0.5 border border-[#36B9ED]">
+                    QA VERDICT: {qaVerdict}
                   </span>
                 </div>
-                <div className="p-2.5 bg-slate-900/90 rounded border border-emerald-900/40 text-[11px] text-slate-200 leading-relaxed max-h-56 overflow-y-auto custom-scrollbar select-text cursor-text">
+                <div className="p-2.5 bg-[#090B0A] border-2 border-[#79D693] text-xs text-[#F0F1DD] font-pixel-body leading-relaxed max-h-56 overflow-y-auto custom-scrollbar select-text cursor-text">
                   <MarkdownRenderer content={finalDeliverable} />
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-center py-8 text-slate-500 text-xs">
-            No active task. Dispatch a new task above or select from history.
+          <div className="text-center py-8 text-[#869184] font-pixel-mono text-xs">
+            &gt; No active task. Enter directive above or select historical task below.
           </div>
         )}
 
@@ -548,8 +557,8 @@ export const TaskPanel: React.FC = () => {
         {tasks.length > 1 && (
           <div className="pt-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider block">
-                Historical Tasks:
+              <span className="text-[10px] font-pixel-heading text-[#869184] uppercase tracking-wider block">
+                HISTORICAL TASKS:
               </span>
               <button
                 type="button"
@@ -568,10 +577,10 @@ export const TaskPanel: React.FC = () => {
                     }
                   } catch {}
                 }}
-                className="text-[9px] text-slate-400 hover:text-amber-300 bg-slate-900 border border-slate-800 hover:border-amber-600/50 px-1.5 py-0.5 rounded transition-colors"
+                className="text-[9px] font-pixel-heading text-[#869184] hover:text-[#CCF12B] bg-[#0D110F] border border-[#465047] hover:border-[#CCF12B] px-1.5 py-0.5 transition-colors cursor-pointer"
                 title="Reset any task stuck in analyzing/planned"
               >
-                Clean Stuck
+                [CLEAN STUCK]
               </button>
             </div>
             <div className="space-y-1">
@@ -579,14 +588,20 @@ export const TaskPanel: React.FC = () => {
                 <button
                   key={t.id}
                   onClick={() => setActiveTaskId(t.id)}
-                  className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between text-[11px] transition-colors ${
+                  className={`w-full text-left px-2 py-1.5 border flex items-center justify-between text-xs transition-colors cursor-pointer ${
                     t.id === activeTaskId
-                      ? 'bg-sky-950/60 text-sky-200 border border-sky-600/40'
-                      : 'bg-slate-950 text-slate-400 hover:bg-slate-800'
+                      ? 'bg-[#1B211D] border-[#36B9ED] text-[#F0F1DD] shadow-[1px_1px_0_#000]'
+                      : 'bg-[#0D110F] border-[#465047] hover:border-[#899584] text-[#B6BFAE]'
                   }`}
                 >
-                  <span className="truncate max-w-[180px]">{t.title}</span>
-                  <span className={`text-[9px] px-1 py-0.2 rounded ${getStatusColor(t.status)}`}>
+                  <span className="truncate max-w-[200px] font-pixel-heading text-[10.5px]">
+                    {t.title}
+                  </span>
+                  <span
+                    className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold ${getStatusBadge(
+                      t.status
+                    )}`}
+                  >
                     {t.status}
                   </span>
                 </button>
