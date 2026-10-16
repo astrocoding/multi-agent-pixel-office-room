@@ -354,16 +354,16 @@ export class OfficeScene extends Phaser.Scene {
   // In-Game HUD Clock
   private createInGameHUD(): void {
     const bg = this.add.graphics();
-    bg.fillStyle(0x0f172a, 0.88);
-    bg.lineStyle(1, 0x334155, 1);
-    bg.fillRoundedRect(0, 0, 140, 26, 6);
-    bg.strokeRoundedRect(0, 0, 140, 26, 6);
+    bg.fillStyle(0x0d110f, 0.95);
+    bg.lineStyle(2, 0x465047, 1);
+    bg.fillRect(0, 0, 140, 26);
+    bg.strokeRect(0, 0, 140, 26);
 
     this.hudClockText = this.add.text(10, 6, this.getFormattedClock(), {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#F8FAFC',
+      color: '#CCF12B',
     });
 
     this.hudContainer = this.add.container(565, 42, [bg, this.hudClockText]);
@@ -397,50 +397,50 @@ export class OfficeScene extends Phaser.Scene {
     const y = 342;
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x0a0d14, 0.96);
-    bg.lineStyle(2, 0x38bdf8, 1);
-    bg.fillRoundedRect(0, 0, boxWidth, boxHeight, 8);
-    bg.strokeRoundedRect(0, 0, boxWidth, boxHeight, 8);
+    bg.fillStyle(0x121615, 0.98);
+    bg.lineStyle(2, 0x465047, 1);
+    bg.fillRect(0, 0, boxWidth, boxHeight);
+    bg.strokeRect(0, 0, boxWidth, boxHeight);
 
     const portraitFrame = this.add.graphics();
-    portraitFrame.fillStyle(0x1e293b, 1);
-    portraitFrame.lineStyle(1.5, 0x64748b, 1);
-    portraitFrame.fillRoundedRect(12, 12, 48, 48, 6);
-    portraitFrame.strokeRoundedRect(12, 12, 48, 48, 6);
+    portraitFrame.fillStyle(0x1b211d, 1);
+    portraitFrame.lineStyle(2, 0x899584, 1);
+    portraitFrame.fillRect(12, 12, 48, 48);
+    portraitFrame.strokeRect(12, 12, 48, 48);
 
     this.dialoguePortrait = this.add.image(36, 36, 'portrait_agent_leader');
     this.dialoguePortrait.setDisplaySize(42, 42);
 
     this.dialogueNameText = this.add.text(70, 10, 'Zen (Leader)', {
-      fontFamily: 'monospace, sans-serif',
-      fontSize: '12px',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
+      fontSize: '11px',
       fontStyle: 'bold',
-      color: '#38BDF8',
+      color: '#CCF12B',
     });
 
     this.dialogueRoleText = this.add.text(70, 26, 'Chief of Staff • Orchestrator', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Pixelify Sans", monospace, sans-serif',
       fontSize: '10px',
-      color: '#94A3B8',
+      color: '#B6BFAE',
     });
 
     this.dialogueBodyText = this.add.text(70, 42, '', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Pixelify Sans", monospace, sans-serif',
       fontSize: '11px',
-      color: '#F8FAFC',
+      color: '#F0F1DD',
       wordWrap: { width: 480, useAdvancedWrap: true },
     });
 
     // Interactive Action Buttons at bottom of Dialogue Box
     const opt1 = this.add.text(70, 72, '[1] Dispatch Task', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '9px',
-      color: '#38BDF8',
+      color: '#36B9ED',
       fontStyle: 'bold',
     });
     opt1.setInteractive({ useHandCursor: true });
-    opt1.on('pointerover', () => opt1.setColor('#93C5FD'));
-    opt1.on('pointerout', () => opt1.setColor('#38BDF8'));
+    opt1.on('pointerover', () => opt1.setColor('#CCF12B'));
+    opt1.on('pointerout', () => opt1.setColor('#36B9ED'));
     opt1.on('pointerdown', () => {
       if (this.activeDialogueAgentId) {
         gameBridge.requestInteraction(this.activeDialogueAgentId);
@@ -449,14 +449,14 @@ export class OfficeScene extends Phaser.Scene {
     });
 
     const opt2 = this.add.text(205, 72, '[2] Status Query', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '9px',
-      color: '#38BDF8',
+      color: '#36B9ED',
       fontStyle: 'bold',
     });
     opt2.setInteractive({ useHandCursor: true });
-    opt2.on('pointerover', () => opt2.setColor('#93C5FD'));
-    opt2.on('pointerout', () => opt2.setColor('#38BDF8'));
+    opt2.on('pointerover', () => opt2.setColor('#CCF12B'));
+    opt2.on('pointerout', () => opt2.setColor('#36B9ED'));
     opt2.on('pointerdown', () => {
       if (this.activeDialogueAgentId) {
         const npc = this.npcs.get(this.activeDialogueAgentId);
@@ -466,14 +466,14 @@ export class OfficeScene extends Phaser.Scene {
     });
 
     const opt3 = this.add.text(340, 72, '[3] Memory Recall', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '9px',
-      color: '#38BDF8',
+      color: '#36B9ED',
       fontStyle: 'bold',
     });
     opt3.setInteractive({ useHandCursor: true });
-    opt3.on('pointerover', () => opt3.setColor('#93C5FD'));
-    opt3.on('pointerout', () => opt3.setColor('#38BDF8'));
+    opt3.on('pointerover', () => opt3.setColor('#CCF12B'));
+    opt3.on('pointerout', () => opt3.setColor('#36B9ED'));
     opt3.on('pointerdown', () => {
       this.animateTypewriterText(
         `Querying pgvector episodic memory... Retrieved previous architectural decisions and project context.`
@@ -481,14 +481,14 @@ export class OfficeScene extends Phaser.Scene {
     });
 
     const optClose = this.add.text(495, 72, '[ESC] Close', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '9px',
-      color: '#94A3B8',
+      color: '#869184',
       fontStyle: 'bold',
     });
     optClose.setInteractive({ useHandCursor: true });
-    optClose.on('pointerover', () => optClose.setColor('#EF4444'));
-    optClose.on('pointerout', () => optClose.setColor('#94A3B8'));
+    optClose.on('pointerover', () => optClose.setColor('#F16E5E'));
+    optClose.on('pointerout', () => optClose.setColor('#869184'));
     optClose.on('pointerdown', () => {
       this.closeDialogue();
     });
@@ -501,20 +501,20 @@ export class OfficeScene extends Phaser.Scene {
     const closeBtnBg = this.add.graphics();
     const renderCloseBtn = (hover: boolean, active: boolean) => {
       closeBtnBg.clear();
-      const fill = active ? 0xdc2626 : (hover ? 0xef4444 : 0x1e293b);
-      const stroke = active ? 0xffffff : (hover ? 0xfca5a5 : 0x475569);
+      const fill = active ? 0xf16e5e : (hover ? 0x899584 : 0x1b211d);
+      const stroke = active ? 0xf0f1dd : (hover ? 0xf0f1dd : 0x465047);
       closeBtnBg.fillStyle(fill, 1);
       closeBtnBg.lineStyle(1.5, stroke, 1);
-      closeBtnBg.fillRoundedRect(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize, 5);
-      closeBtnBg.strokeRoundedRect(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize, 5);
+      closeBtnBg.fillRect(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
+      closeBtnBg.strokeRect(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
     };
     renderCloseBtn(false, false);
 
     const closeBtnText = this.add.text(closeBtnX + closeBtnSize / 2, closeBtnY + closeBtnSize / 2, '✕', {
-      fontFamily: 'monospace, sans-serif',
-      fontSize: '12px',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
+      fontSize: '11px',
       fontStyle: 'bold',
-      color: '#94A3B8',
+      color: '#B6BFAE',
     });
     closeBtnText.setOrigin(0.5, 0.5);
 

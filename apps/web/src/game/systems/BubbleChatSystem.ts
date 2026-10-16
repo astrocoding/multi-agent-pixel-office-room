@@ -35,9 +35,9 @@ export class BubbleChatSystem {
 
     // Pixel styled text
     const textObj = this.scene.add.text(0, 0, cleanText, {
-      fontFamily: 'monospace, "Courier New", sans-serif',
-      fontSize: '10px',
-      color: bubbleType === 'alert' ? '#991B1B' : '#0F172A',
+      fontFamily: '"Pixelify Sans", "VT323", monospace, sans-serif',
+      fontSize: '11px',
+      color: bubbleType === 'alert' ? '#F16E5E' : '#F0F1DD',
       align: 'center',
       wordWrap: { width: maxTextWidth, useAdvancedWrap: true },
     });
@@ -49,15 +49,15 @@ export class BubbleChatSystem {
 
     // Pixel speech bubble frame
     const graphics = this.scene.add.graphics();
-    const bgColor = bubbleType === 'alert' ? 0xffe4e6 : 0xffffff;
-    const borderColor = bubbleType === 'alert' ? 0xe11d48 : 0x1e293b;
+    const bgColor = bubbleType === 'alert' ? 0x1b211d : 0x121615;
+    const borderColor = bubbleType === 'alert' ? 0xf16e5e : 0x465047;
 
     graphics.fillStyle(bgColor, 0.98);
     graphics.lineStyle(1.5, borderColor, 1);
 
-    // Box
-    graphics.fillRoundedRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight, 4);
-    graphics.strokeRoundedRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight, 4);
+    // Box with sharp pixel corners (0-radius)
+    graphics.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+    graphics.strokeRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
 
     // Tail pointing down to speaker
     graphics.fillStyle(bgColor, 1);

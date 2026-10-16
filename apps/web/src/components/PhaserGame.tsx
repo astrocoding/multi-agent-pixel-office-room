@@ -42,7 +42,7 @@ export const PhaserGame: React.FC = () => {
   }, [setNearbyAgentId, setSelectedAgentId]);
 
   return (
-    <div className="relative w-full h-[480px] bg-slate-950 rounded-lg overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center select-none">
+    <div className="relative w-full h-[480px] bg-[#090B0A] overflow-hidden border-2 border-[#465047] shadow-[3px_3px_0_#000000] flex items-center justify-center select-none">
       <div
         ref={containerRef}
         id="game-canvas"
