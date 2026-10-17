@@ -188,7 +188,7 @@ export const TaskPanel: React.FC = () => {
             placeholder="e.g. Build authentication pipeline, migrate schema, run tests"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
+            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1.5 text-[13px] text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
             required
           />
         </div>
@@ -202,7 +202,7 @@ export const TaskPanel: React.FC = () => {
             placeholder="Specify technical constraints, modules, bash commands, techstack, or dependencies..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none"
+            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1.5 text-[13px] text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none"
             required
           />
         </div>
@@ -357,7 +357,7 @@ export const TaskPanel: React.FC = () => {
                 <span className="text-[10px] font-pixel-mono text-[#869184]">
                   TASK #{activeTask.id.slice(0, 8).toUpperCase()}
                 </span>
-                <h3 className="font-pixel-heading font-bold text-[#F0F1DD] text-xs">
+                <h3 className="font-pixel-body font-bold text-[#F0F1DD] text-[13.5px] leading-snug tracking-normal mt-0.5">
                   {activeTask.title}
                 </h3>
               </div>
@@ -594,7 +594,7 @@ export const TaskPanel: React.FC = () => {
                       : 'bg-[#0D110F] border-[#465047] hover:border-[#899584] text-[#B6BFAE]'
                   }`}
                 >
-                  <span className="truncate max-w-[200px] font-pixel-heading text-[10.5px]">
+                  <span className="truncate max-w-[200px] font-pixel-body text-xs text-[#F0F1DD]">
                     {t.title}
                   </span>
                   <span

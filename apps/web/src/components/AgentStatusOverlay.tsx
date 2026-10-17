@@ -33,28 +33,30 @@ export const AgentStatusOverlay: React.FC = () => {
           <div
             key={id}
             onClick={() => setSelectedAgentId(id)}
-            className={`p-2 border-2 transition-transform cursor-pointer relative ${
+            className={`p-2 border-2 transition-colors cursor-pointer relative h-[78px] flex flex-col justify-between ${
               isNearby
-                ? 'bg-[#1B211D] border-[#CCF12B] shadow-[3px_3px_0_#000000] translate-x-[-1px] translate-y-[-1px]'
-                : 'bg-[#121615] border-[#465047] hover:border-[#899584] shadow-[2px_2px_0_#000000] active:translate-x-[1px] active:translate-y-[1px]'
+                ? 'bg-[#1B211D] border-[#CCF12B] shadow-[2px_2px_0_#000000]'
+                : 'bg-[#121615] border-[#465047] hover:border-[#899584] shadow-[2px_2px_0_#000000]'
             }`}
           >
-            <div className="flex items-center justify-between mb-1 gap-1">
-              <span className="font-pixel-heading font-bold text-[#F0F1DD] text-[11px] truncate tracking-wide">
-                {cfg.name.split(' ')[0].toUpperCase()}
-              </span>
-              <span
-                className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold shrink-0 ${getStateBadge(
-                  runtime?.state || 'idle'
-                )}`}
-              >
-                {runtime?.state || 'idle'}
-              </span>
-            </div>
+            <div>
+              <div className="flex items-center justify-between mb-0.5 gap-1">
+                <span className="font-pixel-heading font-bold text-[#F0F1DD] text-[11px] truncate tracking-wide">
+                  {cfg.name.split(' ')[0].toUpperCase()}
+                </span>
+                <span
+                  className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold shrink-0 ${getStateBadge(
+                    runtime?.state || 'idle'
+                  )}`}
+                >
+                  {runtime?.state || 'idle'}
+                </span>
+              </div>
 
-            <p className="text-[10px] text-[#B6BFAE] truncate font-pixel-body mb-0.5">
-              {cfg.role}
-            </p>
+              <p className="text-[10px] text-[#B6BFAE] truncate font-pixel-body mb-0.5">
+                {cfg.role}
+              </p>
+            </div>
 
             {runtime?.currentThought ? (
               <p className="text-[10.5px] text-[#36B9ED] truncate font-pixel-mono leading-tight">
@@ -64,12 +66,6 @@ export const AgentStatusOverlay: React.FC = () => {
               <p className="text-[10.5px] text-[#869184] truncate font-pixel-mono leading-tight">
                 &gt; Standby at station
               </p>
-            )}
-
-            {isNearby && (
-              <div className="mt-1 text-[9px] text-[#CCF12B] font-pixel-heading font-bold flex items-center gap-1 border-t border-[#CCF12B]/40 pt-1">
-                <span>▶</span> IN RANGE [E]
-              </div>
             )}
           </div>
         );
