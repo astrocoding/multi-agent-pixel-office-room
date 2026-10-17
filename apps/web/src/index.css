@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 @theme {
-  --font-pixel-heading: "Silkscreen", "Press Start 2P", monospace;
+  --font-pixel-heading: "Silkscreen", monospace, sans-serif;
   --font-pixel-title: "Press Start 2P", "Silkscreen", monospace;
-  --font-pixel-body: "Pixelify Sans", "VT323", monospace;
-  --font-pixel-terminal: "VT323", monospace, "Courier New";
-  --font-pixel-mono: "VT323", monospace, "Courier New";
+  --font-pixel-body: "Share Tech Mono", "VT323", monospace;
+  --font-pixel-terminal: "Share Tech Mono", "VT323", monospace;
+  --font-pixel-mono: "Share Tech Mono", "VT323", monospace;
 
   --color-pixel-bg-root: #090b0a;
   --color-pixel-bg-surface: #121615;
@@ -29,12 +29,13 @@
 }
 
 @layer base {
-  /* Strict 0-radius policy across entire application */
+  /* Strict 0-radius policy and disable confusing ligatures across entire application */
   *,
   *::before,
   *::after {
     border-radius: 0 !important;
     box-sizing: border-box;
+    font-variant-ligatures: none !important;
   }
 
   body {
@@ -42,9 +43,11 @@
     padding: 0;
     background-color: #090b0a;
     color: #f0f1dd;
-    font-family: var(--font-pixel-body), "VT323", monospace;
+    font-family: var(--font-pixel-body), "Share Tech Mono", monospace;
     overflow-x: hidden;
     position: relative;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
     /* Subtle retro CRT monitor feel without blurring */
     background-image: linear-gradient(
       rgba(18, 22, 21, 0.4) 1px,

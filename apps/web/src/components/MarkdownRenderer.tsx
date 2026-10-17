@@ -42,7 +42,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
   const blocks = parseMarkdownBlocks(content);
 
   return (
-    <div className={`markdown-content text-[#F0F1DD] leading-relaxed text-[12px] font-pixel-body select-text cursor-text ${className}`}>
+    <div className={`markdown-content text-[#F0F1DD] leading-relaxed text-[13.5px] font-pixel-body select-text cursor-text ${className}`}>
       {blocks.map((block, idx) => (
         <React.Fragment key={idx}>{block}</React.Fragment>
       ))}
@@ -299,10 +299,10 @@ function renderTextWithMentions(content: string, keyPrefix: string | number): Re
       return (
         <span
           key={`${keyPrefix}-m-${i}`}
-          className="text-[#36B9ED] font-pixel-heading font-semibold bg-[#0D110F] border border-[#36B9ED] px-1 py-0.2 text-[10px] hover:bg-[#1B211D] hover:text-[#CCF12B] hover:border-[#CCF12B] transition-colors cursor-pointer select-text inline-flex items-center gap-0.5 shadow-[1px_1px_0_#000] mx-0.5"
+          className="text-[#36B9ED] font-pixel-heading font-bold bg-[#0D110F] border border-[#36B9ED] px-1.5 py-0.5 text-[11px] hover:bg-[#1B211D] hover:text-[#CCF12B] hover:border-[#CCF12B] transition-colors cursor-pointer select-text inline-flex items-center gap-0.5 shadow-[1px_1px_0_#000] mx-0.5 tracking-wider uppercase align-baseline"
           title={`Mentioned agent: ${sub}`}
         >
-          {sub}
+          {sub.toUpperCase()}
         </span>
       );
     }
@@ -329,13 +329,13 @@ function renderInline(text: string): React.ReactNode {
   return parts.map((part, index) => {
     if (!part) return null;
 
-    // Inline Code: `code`
+    // Inline Code: `code` (styled clearly for directories, paths, commands)
     if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
       const code = part.slice(1, -1);
       return (
         <code
           key={index}
-          className="px-1.5 py-0.2 bg-[#090B0A] text-[#79D693] font-pixel-mono text-[11px] border border-[#465047]"
+          className="px-2 py-0.5 bg-[#090B0A] text-[#79D693] font-pixel-mono text-[13px] font-semibold border border-[#465047] shadow-[1px_1px_0_#000] mx-0.5 tracking-wide inline-block align-baseline"
         >
           {code}
         </code>
@@ -346,7 +346,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('***') && part.endsWith('***') && part.length >= 6) {
       const inner = part.slice(3, -3);
       return (
-        <strong key={index} className="font-bold text-[#CCF12B] font-pixel-heading">
+        <strong key={index} className="font-bold text-[#CCF12B]">
           {renderTextWithMentions(inner, `${index}-bi`)}
         </strong>
       );
@@ -356,7 +356,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
       const inner = part.slice(2, -2);
       return (
-        <strong key={index} className="font-bold text-[#F0F1DD] font-pixel-heading">
+        <strong key={index} className="font-bold text-[#F0F1DD]">
           {renderTextWithMentions(inner, `${index}-b`)}
         </strong>
       );
@@ -366,7 +366,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('__') && part.endsWith('__') && part.length >= 4) {
       const inner = part.slice(2, -2);
       return (
-        <strong key={index} className="font-bold text-[#F0F1DD] font-pixel-heading">
+        <strong key={index} className="font-bold text-[#F0F1DD]">
           {renderTextWithMentions(inner, `${index}-b`)}
         </strong>
       );
@@ -376,7 +376,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
       const inner = part.slice(1, -1);
       return (
-        <em key={index} className="text-[#CCF12B] font-pixel-body not-italic">
+        <em key={index} className="text-[#CCF12B] font-semibold not-italic">
           {renderTextWithMentions(inner, `${index}-i`)}
         </em>
       );
@@ -386,7 +386,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('_') && part.endsWith('_') && part.length >= 2) {
       const inner = part.slice(1, -1);
       return (
-        <em key={index} className="text-[#CCF12B] font-pixel-body not-italic">
+        <em key={index} className="text-[#CCF12B] font-semibold not-italic">
           {renderTextWithMentions(inner, `${index}-i`)}
         </em>
       );
