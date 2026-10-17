@@ -192,14 +192,14 @@ export const App: React.FC = () => {
         {/* Top 6 Agents Status Cards */}
         <AgentStatusOverlay />
 
-        {/* Middle Section: Game Simulation + Office Dialogue Stream */}
+        {/* Middle Section: Game Simulation + Office Chat */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-start">
           {/* Phaser Pixel Office Game World */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center">
             <PhaserGame />
           </div>
 
-          {/* Office Dialogue Stream (Global Chat Panel) */}
+          {/* Office Chat (Global Chat Panel) */}
           <div className="lg:col-span-5 h-[480px]">
             <GlobalChatPanel />
           </div>

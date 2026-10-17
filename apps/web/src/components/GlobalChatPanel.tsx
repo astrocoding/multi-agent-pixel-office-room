@@ -92,7 +92,7 @@ export const GlobalChatPanel: React.FC = () => {
       <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <h2 className="text-xs font-bold tracking-wider text-[#CCF12B] font-pixel-heading shrink-0 flex items-center gap-1.5">
-            <span>▶</span> OFFICE DIALOGUE STREAM
+            <span>▶</span> OFFICE CHAT
           </h2>
 
           {/* Active Session Title (Editable) */}
@@ -149,17 +149,8 @@ export const GlobalChatPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Controls: New Chat & History Drawer Toggle */}
+        {/* Action Controls: History Drawer Toggle & New Chat Button */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={handleNewChat}
-            className="pixel-btn pixel-btn-primary text-[10px] py-0.5 px-2"
-            title="Create a new clean chat thread (isolated context)"
-          >
-            + NEW CHAT
-          </button>
-
           <button
             type="button"
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
@@ -171,6 +162,15 @@ export const GlobalChatPanel: React.FC = () => {
             title="View chat history threads"
           >
             THREADS ({sessions.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNewChat}
+            className="pixel-btn pixel-btn-primary text-[10px] py-0.5 px-2"
+            title="Create a new clean chat thread (isolated context)"
+          >
+            + NEW CHAT
           </button>
         </div>
       </div>
@@ -277,7 +277,7 @@ export const GlobalChatPanel: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13px] leading-relaxed">
+              <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13.5px] leading-relaxed">
                 <MarkdownRenderer content={m.text} />
               </div>
             </div>
