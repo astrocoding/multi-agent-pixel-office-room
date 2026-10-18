@@ -88,7 +88,9 @@ export class ChatAgentService {
     userText: string,
     recipientId?: AgentId,
     attachments?: TaskAttachment[],
-    sessionId?: string
+    sessionId?: string,
+    msgType: 'dialogue' | 'instruct' = 'dialogue',
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     const targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
@@ -443,6 +445,14 @@ CRITICAL RULES:
     });
 
     const msgId = `chat_${Date.now()}`;
+    const replyType = msgType === 'instruct' ? 'instruct' : 'dialogue';
+    const replyMetadata: Record<string, unknown> = {
+      ...(metadata || {}),
+      responseToType: msgType,
+      deskX: cfg.deskX,
+      deskY: cfg.deskY,
+    };
+
     if (sessionId) {
       await DbQueries.createChatMessage({
         id: msgId,
@@ -450,7 +460,8 @@ CRITICAL RULES:
         sender: targetAgentId,
         senderName: `${cfg.name} (${cfg.role.split(' ')[0]})`,
         text: replyText,
-        type: 'dialogue',
+        type: replyType,
+        metadata: replyMetadata,
       }).catch((e) => console.error('[ChatAgentService] Failed to persist agent reply:', e));
     }
 
@@ -461,7 +472,8 @@ CRITICAL RULES:
       senderName: `${cfg.name} (${cfg.role.split(' ')[0]})`,
       text: replyText,
       timestamp: new Date().toISOString(),
-      type: 'dialogue',
+      type: replyType,
+      metadata: replyMetadata,
     });
 
     this.socketBridge.broadcastStatus({

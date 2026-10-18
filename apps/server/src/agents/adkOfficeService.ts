@@ -486,7 +486,9 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
     userText: string,
     recipientId?: AgentId,
     attachments?: TaskAttachment[],
-    sessionId?: string
+    sessionId?: string,
+    msgType: 'dialogue' | 'instruct' = 'dialogue',
+    metadata?: Record<string, unknown>
   ): Promise<string> {
     const targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
@@ -630,6 +632,14 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
     const speakingCfg = AGENT_CONFIGS[currentSpeakingAgentId] || cfg;
 
     const msgId = `chat_${Date.now()}`;
+    const replyType = msgType === 'instruct' ? 'instruct' : 'dialogue';
+    const replyMetadata: Record<string, unknown> = {
+      ...(metadata || {}),
+      responseToType: msgType,
+      deskX: speakingCfg.deskX,
+      deskY: speakingCfg.deskY,
+    };
+
     if (sessionId) {
       await DbQueries.createChatMessage({
         id: msgId,
@@ -637,7 +647,8 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
         sender: currentSpeakingAgentId,
         senderName: speakingCfg.name,
         text: finalReply,
-        type: 'dialogue',
+        type: replyType,
+        metadata: replyMetadata,
       }).catch((e) => console.error('[AdkOfficeService] Failed to persist agent reply:', e));
     }
 
@@ -656,7 +667,8 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
       senderName: speakingCfg.name,
       text: finalReply,
       timestamp: new Date().toISOString(),
-      type: 'dialogue',
+      type: replyType,
+      metadata: replyMetadata,
     });
 
     this.socketBridge.broadcastStatus({
