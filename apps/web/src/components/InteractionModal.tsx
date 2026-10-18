@@ -70,7 +70,7 @@ export const InteractionModal: React.FC = () => {
             </div>
             <div>
               <span className="text-[10px] font-pixel-heading text-[#869184] uppercase">
-                STATION COORDINATES:
+                WORK DESK:
               </span>
               <p className="text-[#F0F1DD] font-pixel-mono mt-0.5 text-xs">
                 X: {cfg.deskX}, Y: {cfg.deskY}

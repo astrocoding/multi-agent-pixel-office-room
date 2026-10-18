@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../stores/useChatStore.js';
+import { useAgentStore } from '../stores/useAgentStore.js';
 import { socket } from '../services/socket.js';
-import { AGENT_IDS, type AgentId } from '@agent-office/shared';
+import { AGENT_CONFIGS, AGENT_IDS, type AgentId } from '@agent-office/shared';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
+import { AgentMentionBadge } from './AgentMentionBadge.js';
 
 export const GlobalChatPanel: React.FC = () => {
   const {
@@ -19,6 +21,8 @@ export const GlobalChatPanel: React.FC = () => {
     isLoading,
   } = useChatStore();
 
+  const { selectedAgentId, setSelectedAgentId, agents } = useAgentStore();
+
   const [text, setText] = useState('');
   const [recipient, setRecipient] = useState<AgentId>(AGENT_IDS.LEADER);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -27,12 +31,21 @@ export const GlobalChatPanel: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sync recipient with selectedAgentId when interacting with NPC
+  useEffect(() => {
+    if (selectedAgentId) {
+      setRecipient(selectedAgentId);
+    }
+  }, [selectedAgentId]);
+
   // Initial fetch of chat sessions
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const selectedAgentCfg = selectedAgentId ? AGENT_CONFIGS[selectedAgentId] : null;
+  const selectedAgentRuntime = selectedAgentId ? agents[selectedAgentId] : null;
 
   useEffect(() => {
     if (activeSession) {
@@ -54,10 +67,23 @@ export const GlobalChatPanel: React.FC = () => {
     e.preventDefault();
     if (!text.trim()) return;
 
+    const isInstruct = Boolean(selectedAgentId);
+    const targetAgent = selectedAgentId || recipient;
+    const targetCfg = AGENT_CONFIGS[targetAgent];
+
     socket.emit('chat:send', {
       text: text.trim(),
-      recipientAgentId: recipient,
+      recipientAgentId: targetAgent,
       sessionId: activeSessionId || undefined,
+      type: isInstruct ? 'instruct' : 'dialogue',
+      metadata: isInstruct
+        ? {
+            source: 'character_proximity',
+            targetAgentId: targetAgent,
+            deskX: targetCfg?.deskX,
+            deskY: targetCfg?.deskY,
+          }
+        : undefined,
     });
 
     setText('');
@@ -175,6 +201,19 @@ export const GlobalChatPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Mention / Inspect Agents Bar */}
+      <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-[#465047]/60 overflow-x-auto custom-scrollbar shrink-0 select-none">
+        <span className="text-[9px] font-pixel-heading text-[#869184] uppercase tracking-wider shrink-0">
+          AGENTS:
+        </span>
+        <AgentMentionBadge mention="@Zen" onSelectAgent={(id) => setRecipient(id)} />
+        <AgentMentionBadge mention="@Dre" onSelectAgent={(id) => setRecipient(id)} />
+        <AgentMentionBadge mention="@Iky" onSelectAgent={(id) => setRecipient(id)} />
+        <AgentMentionBadge mention="@Gus" onSelectAgent={(id) => setRecipient(id)} />
+        <AgentMentionBadge mention="@Rai" onSelectAgent={(id) => setRecipient(id)} />
+        <AgentMentionBadge mention="@Dhea" onSelectAgent={(id) => setRecipient(id)} />
+      </div>
+
       {/* History Threads Dropdown Drawer */}
       {isHistoryOpen && (
         <div className="absolute top-11 right-3 z-30 w-80 bg-[#121615] border-2 border-[#899584] shadow-[4px_4px_0_#000000] p-2.5 text-[11px] font-pixel-body">
@@ -250,71 +289,168 @@ export const GlobalChatPanel: React.FC = () => {
             &gt; Session initialized. Enter directive or mention @Zen to orchestrate.
           </div>
         ) : (
-          messages.map((m) => (
-            <div
-              key={m.id}
-              className={`p-2.5 border-2 select-text ${
-                m.sender === 'boss'
-                  ? 'bg-[#1B211D] border-[#899584] ml-4 shadow-[2px_2px_0_#000000]'
-                  : 'bg-[#0D110F] border-[#465047] mr-4 shadow-[2px_2px_0_#000000]'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#465047]/60 select-none">
-                <span className={`text-[11px] ${getSenderColor(m.sender)}`}>
-                  {m.senderName.toUpperCase()}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-pixel-mono text-[#869184]">
-                    {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          messages.map((m) => {
+            const isInstruct = m.type === 'instruct';
+            return (
+              <div
+                key={m.id}
+                className={`p-2.5 border-2 select-text transition-colors ${
+                  isInstruct
+                    ? 'border-[#CCF12B] bg-[#161D19] shadow-[3px_3px_0_#000000]'
+                    : m.sender === 'boss'
+                    ? 'bg-[#1B211D] border-[#899584] ml-4 shadow-[2px_2px_0_#000000]'
+                    : 'bg-[#0D110F] border-[#465047] mr-4 shadow-[2px_2px_0_#000000]'
+                }`}
+              >
+                {/* Direct Character Instruct Tag */}
+                {isInstruct && (
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#121615] border border-[#CCF12B] text-[#CCF12B] text-[9.5px] font-pixel-heading font-bold uppercase tracking-wider mb-1.5 shadow-[1px_1px_0_#000]">
+                    <span>▶ DIRECT CHARACTER INSTRUCT</span>
+                    {m.metadata?.deskX !== undefined && m.metadata?.deskY !== undefined && (
+                      <>
+                        <span className="text-[#465047]">•</span>
+                        <span className="text-[#F0F1DD] font-pixel-mono">
+                          WORK DESK: X: {String(m.metadata.deskX)}, Y: {String(m.metadata.deskY)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#465047]/60 select-none">
+                  <span className={`text-[11px] ${getSenderColor(m.sender)}`}>
+                    {m.senderName.toUpperCase()}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyMessage(m.id, m.text)}
-                    title="Copy full message text"
-                    className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-1.5 py-0.2 transition-colors cursor-pointer select-none"
-                  >
-                    {copiedId === m.id ? 'COPIED' : 'COPY'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-pixel-mono text-[#869184]">
+                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyMessage(m.id, m.text)}
+                      title="Copy full message text"
+                      className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-1.5 py-0.2 transition-colors cursor-pointer select-none"
+                    >
+                      {copiedId === m.id ? 'COPIED' : 'COPY'}
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13.5px] leading-relaxed">
+                  <MarkdownRenderer content={m.text} />
                 </div>
               </div>
-              <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13.5px] leading-relaxed">
-                <MarkdownRenderer content={m.text} />
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={scrollRef} />
       </div>
 
+      {/* Docked Direct Character Instruct Card (Integrated from Interaction Modal) */}
+      {selectedAgentId && selectedAgentCfg && (
+        <div className="mt-2 bg-[#161D19] border-2 border-[#CCF12B] p-2.5 shadow-[3px_3px_0_#000000] shrink-0 select-none">
+          <div className="flex items-center justify-between pb-1.5 border-b border-[#465047] mb-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 bg-[#1B211D] border border-[#CCF12B] text-[#CCF12B] font-pixel-heading font-bold text-[10px] flex items-center justify-center shrink-0 shadow-[1px_1px_0_#000]">
+                {selectedAgentCfg.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-pixel-heading font-bold text-[#CCF12B] flex items-center gap-1.5 truncate">
+                  <span>▶ DIRECT INSTRUCT:</span>
+                  <span className="text-[#F0F1DD]">{selectedAgentCfg.name.toUpperCase()}</span>
+                </div>
+                <div className="text-[10px] text-[#B6BFAE] font-pixel-body truncate">
+                  {selectedAgentCfg.role} • {selectedAgentCfg.title}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedAgentId(null)}
+              className="text-[10px] font-pixel-heading text-[#869184] hover:text-[#F16E5E] border border-[#465047] hover:border-[#F16E5E] px-1.5 py-0.5 cursor-pointer transition-colors shrink-0 ml-2"
+              title="Cancel direct instruct mode"
+            >
+              [✕ CANCEL]
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-[#0D110F] p-1.5 border border-[#465047] text-[10.5px]">
+            <div>
+              <span className="text-[9px] font-pixel-heading text-[#869184] uppercase block">
+                RUNTIME STATE:
+              </span>
+              <span className="text-[#36B9ED] font-pixel-heading font-bold uppercase">
+                {selectedAgentRuntime?.state || 'IDLE'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] font-pixel-heading text-[#869184] uppercase block">
+                WORK DESK:
+              </span>
+              <span className="text-[#CCF12B] font-pixel-mono">
+                X: {selectedAgentCfg.deskX}, Y: {selectedAgentCfg.deskY}
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] font-pixel-heading text-[#869184] uppercase block">
+                SPECIALTY:
+              </span>
+              <span className="text-[#F0F1DD] truncate block font-pixel-body" title={selectedAgentCfg.specialty}>
+                {selectedAgentCfg.specialty}
+              </span>
+            </div>
+          </div>
+
+          {selectedAgentRuntime?.currentThought && (
+            <div className="mt-1.5 bg-[#0D110F] p-1.5 border border-[#465047] text-[10px] font-pixel-mono text-[#CCF12B] truncate">
+              &gt; LIVE THOUGHT: {selectedAgentRuntime.currentThought}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Input Form */}
       <form onSubmit={handleSend} className="mt-2 pt-2 border-t-2 border-[#465047] flex gap-2 shrink-0">
         <select
-          value={recipient}
-          onChange={(e) => setRecipient(e.target.value as AgentId)}
-          className="bg-[#0D110F] border-2 border-[#465047] px-2 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+          value={selectedAgentId || recipient}
+          onChange={(e) => {
+            const nextAgent = e.target.value as AgentId;
+            setRecipient(nextAgent);
+            if (selectedAgentId) {
+              setSelectedAgentId(nextAgent);
+            }
+          }}
+          className="bg-[#0D110F] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
         >
           <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
           <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
           <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
           <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
-          <option value={AGENT_IDS.QA}>RAI (QA & CRITIC)</option>
+          <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
           <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
         </select>
 
         <input
           ref={inputRef}
           type="text"
-          placeholder="Speak to agent or mention @Zen, @Iky, @Dre, @Gus..."
+          placeholder={
+            selectedAgentCfg
+              ? `Instruct ${selectedAgentCfg.name.split(' ')[0]} directly (Work Desk: X: ${selectedAgentCfg.deskX}, Y: ${selectedAgentCfg.deskY})...`
+              : 'Speak to agent or mention @Zen, @Iky, @Dre, @Gus...'
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="flex-1 bg-[#0D110F] border-2 border-[#465047] px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
+          className={`flex-1 bg-[#0D110F] border-2 px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none shadow-inner ${
+            selectedAgentId ? 'border-[#CCF12B] focus:border-[#CCF12B]' : 'border-[#465047] focus:border-[#CCF12B]'
+          }`}
         />
 
         <button
           type="submit"
-          className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
+          className={`pixel-btn px-3 py-1 text-[11px] ${
+            selectedAgentId ? 'pixel-btn-primary' : 'pixel-btn-primary'
+          }`}
         >
-          SEND ▶
+          {selectedAgentId ? 'INSTRUCT ▶' : 'SEND ▶'}
         </button>
       </form>
     </div>

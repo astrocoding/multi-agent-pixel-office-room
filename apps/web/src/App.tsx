@@ -4,7 +4,6 @@ import { TaskPanel } from './components/TaskPanel.js';
 import { GlobalChatPanel } from './components/GlobalChatPanel.js';
 import { ActivitySidePanel } from './components/ActivitySidePanel.js';
 import { AgentStatusOverlay } from './components/AgentStatusOverlay.js';
-import { InteractionModal } from './components/InteractionModal.js';
 import { socket } from './services/socket.js';
 import { useAgentStore } from './stores/useAgentStore.js';
 import { useTaskStore } from './stores/useTaskStore.js';
@@ -215,9 +214,6 @@ export const App: React.FC = () => {
           </div>
         </div>
       </main>
-
-      {/* Proximity Interaction Modal */}
-      <InteractionModal />
     </div>
   );
 };

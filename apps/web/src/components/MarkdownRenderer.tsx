@@ -1,4 +1,5 @@
 import React from 'react';
+import { AgentMentionBadge } from './AgentMentionBadge.js';
 
 interface MarkdownRendererProps {
   content: string;
@@ -297,13 +298,10 @@ function renderTextWithMentions(content: string, keyPrefix: string | number): Re
     if (!sub) return null;
     if (sub.startsWith('@') && sub.length > 1) {
       return (
-        <span
+        <AgentMentionBadge
           key={`${keyPrefix}-m-${i}`}
-          className="text-[#36B9ED] font-pixel-heading font-bold bg-[#0D110F] border border-[#36B9ED] px-1.5 py-0.5 text-[11px] hover:bg-[#1B211D] hover:text-[#CCF12B] hover:border-[#CCF12B] transition-colors cursor-pointer select-text inline-flex items-center gap-0.5 shadow-[1px_1px_0_#000] mx-0.5 tracking-wider uppercase align-baseline"
-          title={`Mentioned agent: ${sub}`}
-        >
-          {sub.toUpperCase()}
-        </span>
+          mention={sub}
+        />
       );
     }
     return <span key={`${keyPrefix}-t-${i}`}>{sub}</span>;

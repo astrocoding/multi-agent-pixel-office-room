@@ -261,7 +261,7 @@ export const TaskPanel: React.FC = () => {
             <select
               value={targetAgent}
               onChange={(e) => setTargetAgent(e.target.value as AgentId)}
-              className="bg-[#121615] border-2 border-[#465047] px-2 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+              className="bg-[#121615] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
             >
               <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
               <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER - CODE/SHELL)</option>
