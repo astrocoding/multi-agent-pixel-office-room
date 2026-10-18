@@ -591,7 +591,7 @@ export class DbQueries {
       senderName: r.sender_name as string,
       text: r.text as string,
       timestamp: (r.created_at as Date).toISOString(),
-      type: (r.type as 'dialogue' | 'status' | 'announcement') || 'dialogue',
+      type: (r.type as 'dialogue' | 'status' | 'announcement' | 'instruct') || 'dialogue',
       intent: (r.intent as string) || undefined,
       mentionedAgents: (r.mentioned_agents as string[]) || [],
       metadata: (r.metadata as Record<string, unknown>) || {},

@@ -26,7 +26,9 @@ export class SocketServerBridge {
     text: string,
     recipient?: AgentId,
     attachments?: import('@agent-office/shared').TaskAttachment[],
-    sessionId?: string
+    sessionId?: string,
+    type?: 'dialogue' | 'instruct',
+    metadata?: Record<string, unknown>
   ) => Promise<void>;
 
   constructor(httpServer: HttpServer, allowedOrigin = '*') {
@@ -60,7 +62,9 @@ export class SocketServerBridge {
       text: string,
       recipient?: AgentId,
       attachments?: import('@agent-office/shared').TaskAttachment[],
-      sessionId?: string
+      sessionId?: string,
+      type?: 'dialogue' | 'instruct',
+      metadata?: Record<string, unknown>
     ) => Promise<void>
   ): void {
     this.onChatReceived = fn;
@@ -193,6 +197,12 @@ export class SocketServerBridge {
           }
         }
 
+        const msgType = data.type === 'instruct' ? 'instruct' : 'dialogue';
+        const msgMetadata = data.metadata || (data.type === 'instruct' && recipient ? {
+          source: 'character_proximity',
+          targetAgentId: recipient,
+        } : {});
+
         const msgId = `msg_${Date.now()}`;
         // Persist message to database
         await DbQueries.createChatMessage({
@@ -201,8 +211,9 @@ export class SocketServerBridge {
           sender: 'boss',
           senderName: 'Boss (You)',
           text: data.text,
-          type: 'dialogue',
+          type: msgType,
           mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
+          metadata: msgMetadata,
         }).catch((e) => console.error('[Socket] Failed to persist boss chat message:', e));
 
         const msg: ChatMessage = {
@@ -212,8 +223,9 @@ export class SocketServerBridge {
           senderName: 'Boss (You)',
           text: data.text,
           timestamp: new Date().toISOString(),
-          type: 'dialogue',
+          type: msgType,
           mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
+          metadata: msgMetadata,
         };
 
         this.broadcastChat(msg);
@@ -227,13 +239,13 @@ export class SocketServerBridge {
         if (mentionedAgentId) {
           this.io.emit('agent:summon', {
             agentId: mentionedAgentId,
-            reason: 'mentioned_in_chat',
+            reason: msgType === 'instruct' ? 'direct_instruct' : 'mentioned_in_chat',
             text: data.text,
           });
         }
 
         if (this.onChatReceived) {
-          await this.onChatReceived(data.text, recipient, data.attachments, sessionId);
+          await this.onChatReceived(data.text, recipient, data.attachments, sessionId, msgType, msgMetadata);
         }
       });
 

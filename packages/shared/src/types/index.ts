@@ -171,7 +171,7 @@ export interface ChatMessage {
   text: string;
   taskId?: string;
   timestamp: string;
-  type: 'dialogue' | 'status' | 'announcement';
+  type: 'dialogue' | 'status' | 'announcement' | 'instruct';
   intent?: string;
   mentionedAgents?: string[];
   metadata?: Record<string, unknown>;
@@ -239,7 +239,14 @@ export interface ClientToServerEvents {
     data: { taskId: string; response: string },
     callback?: (res: { success: boolean }) => void
   ) => void;
-  'chat:send': (data: { text: string; recipientAgentId?: AgentId; attachments?: TaskAttachment[]; sessionId?: string }) => void;
+  'chat:send': (data: {
+    text: string;
+    recipientAgentId?: AgentId;
+    attachments?: TaskAttachment[];
+    sessionId?: string;
+    type?: 'dialogue' | 'instruct';
+    metadata?: Record<string, unknown>;
+  }) => void;
   'agent:interact': (data: { agentId: AgentId; intent: string }) => void;
 }
 

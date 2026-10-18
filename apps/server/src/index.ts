@@ -180,12 +180,12 @@ async function bootstrap() {
   });
 
   // 11. Connect Socket.IO Boss Chat to Agent Office Runtime
-  socketBridge.setChatReceiveHandler(async (text, recipient, attachments, sessionId) => {
+  socketBridge.setChatReceiveHandler(async (text, recipient, attachments, sessionId, msgType, metadata) => {
     try {
       if (adkOfficeService) {
-        await adkOfficeService.handleBossMessage(text, recipient, attachments, sessionId);
+        await adkOfficeService.handleBossMessage(text, recipient, attachments, sessionId, msgType, metadata);
       } else {
-        await chatAgentService.handleBossMessage(text, recipient, attachments, sessionId);
+        await chatAgentService.handleBossMessage(text, recipient, attachments, sessionId, msgType, metadata);
       }
     } catch (err: unknown) {
       console.error('[Chat Engine] Error processing chat message:', err);
@@ -198,7 +198,8 @@ async function bootstrap() {
         senderName: cfg.name,
         text: `Maaf Bos, terjadi kendala saat memproses: ${(err as Error).message}`,
         timestamp: new Date().toISOString(),
-        type: 'dialogue',
+        type: msgType === 'instruct' ? 'instruct' : 'dialogue',
+        metadata: metadata || {},
       });
     }
   });
