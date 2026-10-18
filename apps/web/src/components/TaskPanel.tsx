@@ -258,18 +258,25 @@ export const TaskPanel: React.FC = () => {
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-pixel-heading text-[#B6BFAE]">DELEGATE:</span>
-            <select
-              value={targetAgent}
-              onChange={(e) => setTargetAgent(e.target.value as AgentId)}
-              className="bg-[#121615] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
-            >
-              <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
-              <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER - CODE/SHELL)</option>
-              <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
-              <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION &amp; WORKFLOWS)</option>
-              <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC SPECIALIST)</option>
-              <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
-            </select>
+            <div className="relative inline-flex items-center">
+              <select
+                value={targetAgent}
+                onChange={(e) => setTargetAgent(e.target.value as AgentId)}
+                className="appearance-none bg-[#121615] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+              >
+                <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
+                <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER - CODE/SHELL)</option>
+                <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
+                <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION &amp; WORKFLOWS)</option>
+                <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC SPECIALIST)</option>
+                <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
+              </select>
+              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
+                <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 1L5 5L9 1" strokeLinecap="square" />
+                </svg>
+              </div>
+            </div>
           </div>
 
           <button

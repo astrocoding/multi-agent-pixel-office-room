@@ -109,6 +109,18 @@
   -webkit-user-select: text !important;
 }
 
+/* Custom Pixel Art Select with Stripped Native Arrow */
+select.appearance-none {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+}
+
+select.appearance-none::-ms-expand {
+  display: none !important;
+}
+
 /* Reusable Pixel Component Frame Tokens */
 .pixel-frame {
   background-color: #121615;

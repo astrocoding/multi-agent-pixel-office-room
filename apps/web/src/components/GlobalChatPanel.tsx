@@ -28,8 +28,36 @@ export const GlobalChatPanel: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasUserSentNewMessageRef = useRef<boolean>(false);
+  const initialScrollDoneRef = useRef<boolean>(false);
+
+  // Position viewport directly on the latest Boss message at the top of the chat box
+  const scrollToLatestBoss = (smooth = true) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const bossElements = container.querySelectorAll<HTMLElement>('[data-sender="boss"]');
+    if (bossElements.length === 0) {
+      container.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+      return;
+    }
+
+    const latestBossEl = bossElements[bossElements.length - 1];
+    if (!latestBossEl) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const bossRect = latestBossEl.getBoundingClientRect();
+    const relativeTop = bossRect.top - containerRect.top + container.scrollTop;
+
+    // Scroll strictly inside the chat container element - never touching window/page scroll
+    container.scrollTo({
+      top: Math.max(0, relativeTop - 4),
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  };
 
   // Sync recipient with selectedAgentId when interacting with NPC
   useEffect(() => {
@@ -43,6 +71,11 @@ export const GlobalChatPanel: React.FC = () => {
     fetchSessions();
   }, [fetchSessions]);
 
+  // Reset scroll lock when user switches chat threads
+  useEffect(() => {
+    initialScrollDoneRef.current = false;
+  }, [activeSessionId]);
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const selectedAgentCfg = selectedAgentId ? AGENT_CONFIGS[selectedAgentId] : null;
   const selectedAgentRuntime = selectedAgentId ? agents[selectedAgentId] : null;
@@ -53,8 +86,31 @@ export const GlobalChatPanel: React.FC = () => {
     }
   }, [activeSession?.id, activeSession?.title]);
 
+  // Manage chat box scroll behavior:
+  // Anchors viewport to the latest Boss message at the top, followed by the agent's response.
+  // Does NOT force-scroll down to the bottom during or after response generation!
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!messages || messages.length === 0) return;
+
+    // On initial load or thread switch: position at latest boss message without smooth animation
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      requestAnimationFrame(() => {
+        scrollToLatestBoss(false);
+      });
+      return;
+    }
+
+    // When boss sends a new message: smoothly position latest boss card at the top of the chat box
+    const lastMsg = messages[messages.length - 1];
+    if (hasUserSentNewMessageRef.current || lastMsg?.sender === 'boss') {
+      hasUserSentNewMessageRef.current = false;
+      requestAnimationFrame(() => {
+        scrollToLatestBoss(true);
+      });
+    }
+    // When agent generates or appends response: DO NOT force scroll down.
+    // The view stays anchored at the Boss prompt + agent response directly underneath it.
   }, [messages]);
 
   const handleCopyMessage = (id: string, textToCopy: string) => {
@@ -70,6 +126,8 @@ export const GlobalChatPanel: React.FC = () => {
     const isInstruct = Boolean(selectedAgentId);
     const targetAgent = selectedAgentId || recipient;
     const targetCfg = AGENT_CONFIGS[targetAgent];
+
+    hasUserSentNewMessageRef.current = true;
 
     socket.emit('chat:send', {
       text: text.trim(),
@@ -278,8 +336,11 @@ export const GlobalChatPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Message List with Auto-Scroll & Text Selectability */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1.5 custom-scrollbar select-text">
+      {/* Message List with Smart Boss-Anchored Scroll & Text Selectability */}
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1.5 custom-scrollbar select-text relative"
+      >
         {isLoading ? (
           <div className="text-center py-8 text-[#869184] text-xs font-pixel-mono">
             &gt; Loading encrypted chat threads...
@@ -294,6 +355,8 @@ export const GlobalChatPanel: React.FC = () => {
             return (
               <div
                 key={m.id}
+                data-sender={m.sender}
+                data-message-id={m.id}
                 className={`p-2.5 border-2 select-text transition-colors ${
                   isInstruct
                     ? 'border-[#CCF12B] bg-[#161D19] shadow-[3px_3px_0_#000000]'
@@ -342,7 +405,6 @@ export const GlobalChatPanel: React.FC = () => {
             );
           })
         )}
-        <div ref={scrollRef} />
       </div>
 
       {/* Docked Direct Character Instruct Card (Integrated from Interaction Modal) */}
@@ -408,26 +470,34 @@ export const GlobalChatPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Input Form */}
+      {/* Input Form with Perfectly Spaced Retro Select Dropdown */}
       <form onSubmit={handleSend} className="mt-2 pt-2 border-t-2 border-[#465047] flex gap-2 shrink-0">
-        <select
-          value={selectedAgentId || recipient}
-          onChange={(e) => {
-            const nextAgent = e.target.value as AgentId;
-            setRecipient(nextAgent);
-            if (selectedAgentId) {
-              setSelectedAgentId(nextAgent);
-            }
-          }}
-          className="bg-[#0D110F] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
-        >
-          <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
-          <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
-          <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
-          <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
-          <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
-          <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
-        </select>
+        <div className="relative inline-flex items-center shrink-0">
+          <select
+            value={selectedAgentId || recipient}
+            onChange={(e) => {
+              const nextAgent = e.target.value as AgentId;
+              setRecipient(nextAgent);
+              if (selectedAgentId) {
+                setSelectedAgentId(nextAgent);
+              }
+            }}
+            className="appearance-none bg-[#0D110F] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+          >
+            <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
+            <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
+            <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
+            <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
+            <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
+            <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
+          </select>
+          {/* Custom retro chevron arrow with comfortable 12px right padding from border */}
+          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
+            <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 1L5 5L9 1" strokeLinecap="square" />
+            </svg>
+          </div>
+        </div>
 
         <input
           ref={inputRef}
@@ -446,9 +516,7 @@ export const GlobalChatPanel: React.FC = () => {
 
         <button
           type="submit"
-          className={`pixel-btn px-3 py-1 text-[11px] ${
-            selectedAgentId ? 'pixel-btn-primary' : 'pixel-btn-primary'
-          }`}
+          className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
         >
           {selectedAgentId ? 'INSTRUCT ▶' : 'SEND ▶'}
         </button>

@@ -35,6 +35,14 @@ export const App: React.FC = () => {
     }
   };
 
+  // Prevent auto-scroll restoration jumping the whole page down on hard refresh
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+    window.scrollTo(0, 0);
+  }, []);
+
   useEffect(() => {
     setIsConnected(socket.connected);
     fetchModelRouter();
