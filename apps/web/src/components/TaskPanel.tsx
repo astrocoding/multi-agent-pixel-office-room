@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTaskStore } from '../stores/useTaskStore.js';
 import { useActivityStore } from '../stores/useActivityStore.js';
 import { socket } from '../services/socket.js';
@@ -15,11 +15,30 @@ interface TaskPanelProps {
   onOpenActivityLog?: () => void;
 }
 
+const STORAGE_KEY_TITLE = 'aor_task_directive_draft';
+const STORAGE_KEY_DESC = 'aor_task_technical_scope_draft';
+
 export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   const { tasks, activeTaskId, isSubmitting, setIsSubmitting, setActiveTaskId, setTasks } = useTaskStore();
   const { activities } = useActivityStore();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+
+  // Initialize inputs from sessionStorage to prevent accidental loss
+  const [title, setTitle] = useState(() => {
+    try {
+      return sessionStorage.getItem(STORAGE_KEY_TITLE) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [description, setDescription] = useState(() => {
+    try {
+      return sessionStorage.getItem(STORAGE_KEY_DESC) || '';
+    } catch {
+      return '';
+    }
+  });
+
   const [targetAgent, setTargetAgent] = useState<AgentId>(AGENT_IDS.LEADER);
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [activeTab, setActiveTab] = useState<'roadmap' | 'terminal' | 'deliverable'>('roadmap');
@@ -27,6 +46,51 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   const [isClarifying, setIsClarifying] = useState(false);
   const [deliverableCopied, setDeliverableCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Modal editor states
+  const [activeModalField, setActiveModalField] = useState<'title' | 'description' | null>(null);
+  const [descTab, setDescTab] = useState<'edit' | 'preview' | 'split'>('split');
+
+  // Real-time synchronization to sessionStorage
+  const updateTitle = (val: string) => {
+    setTitle(val);
+    try {
+      sessionStorage.setItem(STORAGE_KEY_TITLE, val);
+    } catch {}
+  };
+
+  const updateDescription = (val: string) => {
+    setDescription(val);
+    try {
+      sessionStorage.setItem(STORAGE_KEY_DESC, val);
+    } catch {}
+  };
+
+  const resetTitle = () => {
+    setTitle('');
+    try {
+      sessionStorage.removeItem(STORAGE_KEY_TITLE);
+    } catch {}
+  };
+
+  const resetDescription = () => {
+    setDescription('');
+    try {
+      sessionStorage.removeItem(STORAGE_KEY_DESC);
+    } catch {}
+  };
+
+  // Close modal on ESC key
+  useEffect(() => {
+    if (!activeModalField) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveModalField(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeModalField]);
 
   const activeTask = tasks.find((t) => t.id === activeTaskId) || tasks[0];
   const steps = activeTask?.plan?.steps || [];
@@ -122,8 +186,8 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
       (res) => {
         setIsSubmitting(false);
         if (res.success && res.taskId) {
-          setTitle('');
-          setDescription('');
+          resetTitle();
+          resetDescription();
           setAttachments([]);
           setActiveTaskId(res.taskId);
         } else {
@@ -141,12 +205,19 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
     setIsClarifying(true);
     socket.emit('task:clarify', { taskId: activeTask.id, response: answer }, (res) => {
       setIsClarifying(false);
-      if (res?.success) {
+      if (res.success) {
         setClarificationReply('');
       } else {
-        alert('Failed to submit clarification to agent.');
+        alert('Failed to send clarification');
       }
     });
+  };
+
+  const handleCopyDeliverable = () => {
+    if (!finalDeliverable) return;
+    navigator.clipboard.writeText(finalDeliverable);
+    setDeliverableCopied(true);
+    setTimeout(() => setDeliverableCopied(false), 2000);
   };
 
   const getStatusBadge = (status: string) => {
@@ -154,13 +225,9 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
       case 'completed':
         return 'bg-[#1B211D] text-[#79D693] border-[#79D693]';
       case 'in_progress':
-      case 'analyzing':
-      case 'planned':
-        return 'bg-[#1B211D] text-[#F5BC4D] border-[#F5BC4D]';
-      case 'waiting_approval':
-        return 'bg-[#1B211D] text-[#F5BC4D] border-2 border-[#F5BC4D]';
-      case 'reviewing':
         return 'bg-[#1B211D] text-[#36B9ED] border-[#36B9ED]';
+      case 'waiting_approval':
+        return 'bg-[#1B211D] text-[#F5BC4D] border-[#F5BC4D]';
       case 'failed':
         return 'bg-[#1B211D] text-[#F16E5E] border-[#F16E5E]';
       default:
@@ -169,7 +236,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2 sm:p-2.5 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2 sm:p-2.5 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden relative">
       {/* Title Header with Activity Log Trigger on Far Right */}
       <div className="flex items-center justify-between pb-1.5 border-b-2 border-[#465047] mb-1.5 shrink-0 gap-2">
         <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5 truncate">
@@ -202,32 +269,92 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
         className="space-y-1.5 mb-2 bg-[#0D110F] p-2 border-2 border-[#465047] shadow-[1px_1px_0_#000] shrink-0"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {/* Directive Input with Click-to-Modal & Red Reset 'X' */}
           <div>
-            <label className="block text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-0.5">
-              TASK DIRECTIVE:
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Build auth pipeline, run tests..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-[#121615] border-2 border-[#465047] px-2 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
-              required
-            />
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider flex items-center gap-1.5">
+                <span>TASK DIRECTIVE:</span>
+                <span className="text-[8.5px] text-[#36B9ED] font-pixel-mono">(CLICK TO EXPAND)</span>
+              </label>
+              {title && (
+                <button
+                  type="button"
+                  onClick={resetTitle}
+                  className="text-[9px] font-pixel-heading text-[#F16E5E] hover:text-[#FF3B30] hover:underline cursor-pointer flex items-center gap-0.5"
+                  title="Clear task directive"
+                >
+                  <span className="text-red-500 font-bold">✕</span> RESET
+                </button>
+              )}
+            </div>
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                placeholder="Click to edit directive in expanded modal..."
+                value={title}
+                onClick={() => setActiveModalField('title')}
+                onChange={(e) => updateTitle(e.target.value)}
+                className="w-full bg-[#121615] border-2 border-[#465047] pl-2 pr-7 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner cursor-pointer"
+                required
+              />
+              {title && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetTitle();
+                  }}
+                  className="absolute right-2 text-[#F16E5E] hover:text-[#FF3B30] font-pixel-heading font-bold text-sm cursor-pointer px-1 transition-colors"
+                  title="Clear task directive"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
+          {/* Technical Scope Input with Click-to-Modal & Red Reset 'X' */}
           <div>
-            <label className="block text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-0.5">
-              TECHNICAL SCOPE &amp; DETAILS:
-            </label>
-            <input
-              type="text"
-              placeholder="Specify constraints, bash commands, techstack..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-[#121615] border-2 border-[#465047] px-2 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
-              required
-            />
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider flex items-center gap-1.5">
+                <span>TECHNICAL SCOPE:</span>
+                <span className="text-[8.5px] text-[#79D693] font-pixel-mono">(MARKDOWN MODAL)</span>
+              </label>
+              {description && (
+                <button
+                  type="button"
+                  onClick={resetDescription}
+                  className="text-[9px] font-pixel-heading text-[#F16E5E] hover:text-[#FF3B30] hover:underline cursor-pointer flex items-center gap-0.5"
+                  title="Clear technical scope"
+                >
+                  <span className="text-red-500 font-bold">✕</span> RESET
+                </button>
+              )}
+            </div>
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                placeholder="Click to edit with dynamic markdown formatting..."
+                value={description}
+                onClick={() => setActiveModalField('description')}
+                onChange={(e) => updateDescription(e.target.value)}
+                className="w-full bg-[#121615] border-2 border-[#465047] pl-2 pr-7 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner cursor-pointer"
+                required
+              />
+              {description && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetDescription();
+                  }}
+                  className="absolute right-2 text-[#F16E5E] hover:text-[#FF3B30] font-pixel-heading font-bold text-sm cursor-pointer px-1 transition-colors"
+                  title="Clear technical scope"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -305,8 +432,8 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
 
       {/* Clarification Request Banner */}
       {isWaitingClarification && clarification && (
-        <div className="mb-2.5 p-2.5 bg-[#1B211D] border-2 border-[#F5BC4D] shadow-[2px_2px_0_#000]">
-          <div className="flex items-center justify-between mb-1.5">
+        <div className="mb-2 p-2 bg-[#1B211D] border-2 border-[#F5BC4D] shadow-[2px_2px_0_#000]">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1.5 text-[#F5BC4D] font-pixel-heading font-bold text-xs">
               <span className="text-[9px] bg-[#0D110F] px-1 py-0.2 border border-[#F5BC4D]">
                 [CLARIFICATION REQUIRED]
@@ -411,226 +538,424 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
                 onClick={() => setActiveTab('terminal')}
                 className={`px-3 py-1 border-t-2 border-x-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'terminal'
-                    ? 'border-[#79D693] text-[#79D693] bg-[#1B211D]'
+                    ? 'border-[#CCF12B] text-[#CCF12B] bg-[#1B211D]'
                     : 'border-transparent text-[#869184] hover:text-[#F0F1DD] hover:bg-[#121615]'
                 }`}
               >
-                <span>TERMINAL LOGS</span>
-                {terminalLogs.length > 0 && (
-                  <span className="text-[9px] font-pixel-mono bg-[#0D110F] text-[#79D693] px-1 border border-[#79D693]">
-                    {terminalLogs.length}
-                  </span>
-                )}
+                TERMINAL LOGS ({terminalLogs.length})
               </button>
               {finalDeliverable && (
                 <button
                   onClick={() => setActiveTab('deliverable')}
-                  className={`px-3 py-1 border-t-2 border-x-2 transition-colors cursor-pointer ${
+                  className={`px-3 py-1 border-t-2 border-x-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'deliverable'
-                      ? 'border-[#36B9ED] text-[#36B9ED] bg-[#1B211D]'
+                      ? 'border-[#CCF12B] text-[#CCF12B] bg-[#1B211D]'
                       : 'border-transparent text-[#869184] hover:text-[#F0F1DD] hover:bg-[#121615]'
                   }`}
                 >
-                  DELIVERABLE &amp; QA
+                  <span className="w-1.5 h-1.5 bg-[#79D693]" />
+                  DELIVERABLE
                 </button>
               )}
             </div>
 
-            {/* Tab 1: Roadmap Steps */}
+            {/* Tab: Roadmap */}
             {activeTab === 'roadmap' && (
               <div className="space-y-1.5">
-                {steps.length > 0 ? (
-                  steps.map((s) => (
-                    <div
-                      key={s.stepIndex}
-                      className="p-2 bg-[#121615] border-2 border-[#465047] hover:border-[#899584] flex items-start justify-between gap-2 text-xs transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-pixel-heading font-bold text-[#CCF12B]">
-                            #{s.stepIndex}
-                          </span>
-                          <span className="font-pixel-heading font-semibold text-[#F0F1DD]">
-                            {AGENT_CONFIGS[s.assignedTo]?.name || s.assignedTo}
-                          </span>
-                        </div>
-                        <p className="text-[#B6BFAE] font-pixel-body text-[11px] mt-0.5">
-                          {s.objective}
-                        </p>
-                        {s.result && (
-                          <div className="text-[#79D693] text-[11px] mt-1.5 font-pixel-mono bg-[#090B0A] p-2 border border-[#465047]">
-                            <MarkdownRenderer content={s.result} />
-                          </div>
-                        )}
-                      </div>
-                      <span
-                        className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold shrink-0 ${getStatusBadge(
-                          s.status
-                        )}`}
-                      >
-                        {s.status}
+                {steps.map((step, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-2 bg-[#121615] border border-[#465047]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-pixel-mono text-[#869184]">
+                        #{step.stepIndex}
+                      </span>
+                      <span className="font-pixel-body font-bold text-xs text-[#F0F1DD]">
+                        {step.objective}
+                      </span>
+                      <span className="text-[10px] font-pixel-heading text-[#36B9ED]">
+                        @{AGENT_CONFIGS[step.assignedTo]?.name.split(' ')[0] || step.assignedTo}
                       </span>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-[#869184] font-pixel-mono text-xs py-4 text-center">
-                    &gt; Generating plan &amp; decomposing steps with Auto-Router...
-                  </p>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.2 border font-pixel-heading uppercase ${
+                        step.status === 'completed'
+                          ? 'border-[#79D693] text-[#79D693]'
+                          : step.status === 'in_progress'
+                          ? 'border-[#36B9ED] text-[#36B9ED]'
+                          : 'border-[#869184] text-[#869184]'
+                      }`}
+                    >
+                      {step.status}
+                    </span>
+                  </div>
+                ))}
+                {steps.length === 0 && (
+                  <div className="text-center py-4 text-[#869184] text-xs font-pixel-mono">
+                    &gt; No roadmap steps defined.
+                  </div>
                 )}
               </div>
             )}
 
-            {/* Tab 2: Terminal Execution Logs */}
+            {/* Tab: Terminal Logs */}
             {activeTab === 'terminal' && (
-              <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                {terminalLogs.length > 0 ? (
-                  terminalLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="bg-[#090B0A] border-2 border-[#465047] p-2 font-pixel-mono text-[11px]"
-                    >
-                      <div className="flex items-center justify-between text-[#869184] mb-1.5 border-b border-[#465047] pb-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[#36B9ED] font-pixel-heading font-bold uppercase text-[10px]">
-                            [{AGENT_CONFIGS[log.executedBy]?.name || log.executedBy}]
-                          </span>
-                          <span className="bg-[#1B211D] text-[#B6BFAE] px-1 border border-[#465047] text-[9.5px]">
-                            {log.toolName}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[#869184] text-[10px]">{log.executionTimeMs}ms</span>
-                          <span
-                            className={`px-1 py-0.2 font-pixel-heading font-bold text-[9px] border ${
-                              log.exitCode === 0
-                                ? 'text-[#79D693] border-[#79D693] bg-[#0D110F]'
-                                : 'text-[#F16E5E] border-[#F16E5E] bg-[#0D110F]'
-                            }`}
-                          >
-                            {log.exitCode === 0 ? 'EXIT 0' : `ERR ${log.exitCode}`}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-[#CCF12B] font-pixel-mono font-bold mb-1 truncate">
+              <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar font-pixel-mono text-[11px]">
+                {terminalLogs.map((log) => (
+                  <div key={log.id} className="p-2 bg-[#090B0A] border border-[#465047]">
+                    <div className="flex items-center justify-between text-[#869184] text-[10px] mb-1">
+                      <span>{log.toolName} ({log.executedBy})</span>
+                      <span>{log.executionTimeMs}ms • exit {log.exitCode}</span>
+                    </div>
+                    {log.command && (
+                      <div className="text-[#CCF12B] mb-1 text-xs">
                         $ {log.command}
                       </div>
-
-                      {log.stdout && (
-                        <pre className="text-[#F0F1DD] text-[10px] bg-[#0D110F] p-2 border border-[#465047] overflow-x-auto whitespace-pre-wrap max-h-32 custom-scrollbar">
-                          {log.stdout}
-                        </pre>
-                      )}
-
-                      {log.stderr && (
-                        <pre className="text-[#F16E5E] text-[10px] bg-[#1B211D] p-2 border border-[#F16E5E] overflow-x-auto whitespace-pre-wrap max-h-24 mt-1 custom-scrollbar">
-                          {log.stderr}
-                        </pre>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-6 text-[#869184] font-pixel-mono text-xs">
-                    &gt; No shell or container tools executed yet for this task.
+                    )}
+                    {log.stdout && (
+                      <pre className="text-[#F0F1DD] text-[10.5px] whitespace-pre-wrap leading-tight max-h-24 overflow-y-auto custom-scrollbar">
+                        {log.stdout}
+                      </pre>
+                    )}
+                    {log.stderr && (
+                      <pre className="text-[#F16E5E] text-[10.5px] whitespace-pre-wrap leading-tight mt-1">
+                        {log.stderr}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+                {terminalLogs.length === 0 && (
+                  <div className="text-center py-4 text-[#869184] text-xs font-pixel-mono">
+                    &gt; No terminal tool records for this directive.
                   </div>
                 )}
               </div>
             )}
 
-            {/* Tab 3: Deliverable & QA */}
+            {/* Tab: Final Deliverable */}
             {activeTab === 'deliverable' && finalDeliverable && (
-              <div>
-                <div className="flex items-center justify-between mb-2 select-none">
+              <div className="bg-[#121615] border-2 border-[#CCF12B] p-3 shadow-[2px_2px_0_#000]">
+                <div className="flex items-center justify-between pb-1.5 border-b border-[#465047] mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-pixel-heading font-bold text-[#79D693] uppercase tracking-wider">
-                      EXECUTIVE DELIVERABLE:
+                    <span className="text-[10px] font-pixel-heading font-bold text-[#CCF12B]">
+                      [QA VERDICT: {qaVerdict}]
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(finalDeliverable);
-                        setDeliverableCopied(true);
-                        setTimeout(() => setDeliverableCopied(false), 2000);
-                      }}
-                      className="pixel-btn pixel-btn-ghost text-[9px] py-0.5 px-2"
-                      title="Copy full deliverable text"
-                    >
-                      {deliverableCopied ? 'COPIED' : 'COPY ALL'}
-                    </button>
                   </div>
-                  <span className="text-[9px] font-pixel-heading text-[#36B9ED] bg-[#0D110F] px-1.5 py-0.5 border border-[#36B9ED]">
-                    QA VERDICT: {qaVerdict}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyDeliverable}
+                    className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-2 py-0.5 transition-colors cursor-pointer"
+                  >
+                    {deliverableCopied ? 'COPIED' : 'COPY DELIVERABLE'}
+                  </button>
                 </div>
-                <div className="p-2.5 bg-[#090B0A] border-2 border-[#79D693] text-xs text-[#F0F1DD] font-pixel-body leading-relaxed max-h-56 overflow-y-auto custom-scrollbar select-text cursor-text">
+                <div className="text-[#F0F1DD] text-xs leading-relaxed font-pixel-body max-h-48 overflow-y-auto custom-scrollbar">
                   <MarkdownRenderer content={finalDeliverable} />
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-center py-8 text-[#869184] font-pixel-mono text-xs">
-            &gt; No active task. Enter directive above or select historical task below.
-          </div>
-        )}
-
-        {/* Task List Selector */}
-        {tasks.length > 1 && (
-          <div className="pt-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-pixel-heading text-[#869184] uppercase tracking-wider block">
-                HISTORICAL TASKS:
-              </span>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/tasks/cleanup', { method: 'POST' });
-                    if (res.ok) {
-                      const data = await res.json();
-                      if (data.cleaned > 0) {
-                        const refreshRes = await fetch('/api/tasks');
-                        if (refreshRes.ok) {
-                          const refreshed = await refreshRes.json();
-                          if (refreshed.tasks) setTasks(refreshed.tasks);
-                        }
-                      }
-                    }
-                  } catch {}
-                }}
-                className="text-[9px] font-pixel-heading text-[#869184] hover:text-[#CCF12B] bg-[#0D110F] border border-[#465047] hover:border-[#CCF12B] px-1.5 py-0.5 transition-colors cursor-pointer"
-                title="Reset any task stuck in analyzing/planned"
-              >
-                [CLEAN STUCK]
-              </button>
-            </div>
-            <div className="space-y-1">
-              {tasks.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTaskId(t.id)}
-                  className={`w-full text-left px-2 py-1.5 border flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                    t.id === activeTaskId
-                      ? 'bg-[#1B211D] border-[#36B9ED] text-[#F0F1DD] shadow-[1px_1px_0_#000]'
-                      : 'bg-[#0D110F] border-[#465047] hover:border-[#899584] text-[#B6BFAE]'
-                  }`}
-                >
-                  <span className="truncate max-w-[200px] font-pixel-body text-xs text-[#F0F1DD]">
-                    {t.title}
-                  </span>
-                  <span
-                    className={`text-[8.5px] px-1 py-0.2 border uppercase font-pixel-heading font-bold ${getStatusBadge(
-                      t.status
-                    )}`}
-                  >
-                    {t.status}
-                  </span>
-                </button>
-              ))}
-            </div>
+          <div className="text-center py-6 text-[#869184] text-xs font-pixel-mono">
+            &gt; No active task selected. Dispatch directive above to orchestrate swarm.
           </div>
         )}
       </div>
+
+      {/* MODAL 1: Task Directive Expanded Editor */}
+      {activeModalField === 'title' && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3 sm:p-5 select-none animate-in fade-in duration-100"
+          onClick={() => setActiveModalField(null)}
+        >
+          <div
+            className="bg-[#121615] border-2 border-[#899584] max-w-2xl w-full p-4 font-pixel-body text-xs text-[#F0F1DD] shadow-[6px_6px_0_#000000] relative flex flex-col gap-3 select-text"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047]">
+              <h3 className="font-pixel-heading font-bold text-xs sm:text-sm text-[#36B9ED] flex items-center gap-2">
+                <span>▶</span> TASK DIRECTIVE SPECIFICATION
+              </h3>
+              <div className="flex items-center gap-2">
+                {title && (
+                  <button
+                    type="button"
+                    onClick={resetTitle}
+                    className="text-[10px] font-pixel-heading text-[#F16E5E] hover:underline cursor-pointer"
+                  >
+                    [✕ CLEAR ALL]
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setActiveModalField(null)}
+                  className="text-xs font-pixel-heading text-[#869184] hover:text-[#F16E5E] border border-transparent hover:border-[#F16E5E] px-1.5 py-0.5 cursor-pointer"
+                >
+                  [✕ CLOSE]
+                </button>
+              </div>
+            </div>
+
+            {/* Context Notice */}
+            <p className="text-[#B6BFAE] text-[11px] font-pixel-body">
+              Specify the primary goal for the multi-agent swarm. All edits automatically persist in session storage to prevent accidental data loss.
+            </p>
+
+            {/* Textarea */}
+            <div className="relative">
+              <textarea
+                rows={6}
+                value={title}
+                onChange={(e) => updateTitle(e.target.value)}
+                placeholder="e.g. Build authentication pipeline, migrate schema, run tests..."
+                className="w-full bg-[#0D110F] border-2 border-[#465047] p-3 text-sm text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-y leading-relaxed"
+                autoFocus
+              />
+              {title && (
+                <button
+                  type="button"
+                  onClick={resetTitle}
+                  className="absolute top-2.5 right-2.5 text-[#F16E5E] hover:text-[#FF3B30] text-sm font-bold font-pixel-heading cursor-pointer bg-[#0D110F] px-1 border border-[#F16E5E]/40"
+                  title="Reset task directive"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-[#465047]/60">
+              <span className="text-[10px] font-pixel-mono text-[#869184]">
+                {title.length} characters • Session auto-saved
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveModalField(null)}
+                className="pixel-btn pixel-btn-primary px-3 py-1 text-xs"
+              >
+                APPLY &amp; RETURN ▶
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Technical Scope & Architecture Expanded Markdown Modal */}
+      {activeModalField === 'description' && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3 sm:p-5 select-none animate-in fade-in duration-100"
+          onClick={() => setActiveModalField(null)}
+        >
+          <div
+            className="bg-[#121615] border-2 border-[#899584] max-w-4xl w-full h-[80vh] max-h-[750px] p-4 font-pixel-body text-xs text-[#F0F1DD] shadow-[6px_6px_0_#000000] relative flex flex-col gap-2.5 select-text"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] shrink-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-pixel-heading font-bold text-xs sm:text-sm text-[#79D693] flex items-center gap-2">
+                  <span>▶</span> TECHNICAL SCOPE &amp; SPECIFICATIONS (MARKDOWN)
+                </h3>
+                <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1.5 py-0.2 border border-[#465047] font-pixel-heading">
+                  DYNAMIC FORMATTING
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {description && (
+                  <button
+                    type="button"
+                    onClick={resetDescription}
+                    className="text-[10px] font-pixel-heading text-[#F16E5E] hover:underline cursor-pointer"
+                  >
+                    [✕ CLEAR ALL]
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setActiveModalField(null)}
+                  className="text-xs font-pixel-heading text-[#869184] hover:text-[#F16E5E] border border-transparent hover:border-[#F16E5E] px-1.5 py-0.5 cursor-pointer"
+                >
+                  [✕ CLOSE]
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Markdown Toolbar & View Switcher */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1 shrink-0">
+              <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar py-0.5">
+                <span className="text-[9px] font-pixel-heading text-[#869184] uppercase mr-1">
+                  FORMAT:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateDescription(description + '\n```bash\n# commands\n```\n')}
+                  className="pixel-btn pixel-btn-ghost text-[9px] py-0.2 px-1.5"
+                  title="Insert Codeblock"
+                >
+                  &gt; CODEBLOCK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateDescription(description + ' `~/Projects/quotes` ')}
+                  className="pixel-btn pixel-btn-ghost text-[9px] py-0.2 px-1.5"
+                  title="Insert Path"
+                >
+                  `PATH`
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateDescription(description + ' **bold text** ')}
+                  className="pixel-btn pixel-btn-ghost text-[9px] py-0.2 px-1.5"
+                  title="Insert Bold Text"
+                >
+                  **BOLD**
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateDescription(description + '\n1. First task\n2. Second task\n')}
+                  className="pixel-btn pixel-btn-ghost text-[9px] py-0.2 px-1.5"
+                  title="Insert Ordered List"
+                >
+                  1. LIST
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateDescription(description + ' @Zen ')}
+                  className="pixel-btn pixel-btn-ghost text-[9px] py-0.2 px-1.5"
+                  title="Mention Agent"
+                >
+                  @AGENT
+                </button>
+              </div>
+
+              {/* View Mode Tabs */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDescTab('edit')}
+                  className={`text-[9.5px] font-pixel-heading px-2 py-0.5 border cursor-pointer ${
+                    descTab === 'edit'
+                      ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
+                      : 'bg-[#0D110F] border-[#465047] text-[#869184]'
+                  }`}
+                >
+                  EDITOR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDescTab('preview')}
+                  className={`text-[9.5px] font-pixel-heading px-2 py-0.5 border cursor-pointer ${
+                    descTab === 'preview'
+                      ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
+                      : 'bg-[#0D110F] border-[#465047] text-[#869184]'
+                  }`}
+                >
+                  PREVIEW
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDescTab('split')}
+                  className={`hidden md:block text-[9.5px] font-pixel-heading px-2 py-0.5 border cursor-pointer ${
+                    descTab === 'split'
+                      ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
+                      : 'bg-[#0D110F] border-[#465047] text-[#869184]'
+                  }`}
+                >
+                  SPLIT VIEW
+                </button>
+              </div>
+            </div>
+
+            {/* Content Area: Editor / Preview */}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {descTab === 'split' ? (
+                <div className="grid grid-cols-2 gap-2.5 h-full">
+                  <div className="relative h-full flex flex-col">
+                    <textarea
+                      value={description}
+                      onChange={(e) => updateDescription(e.target.value)}
+                      placeholder="Specify technical constraints, modules, bash commands, techstack, or dependencies..."
+                      className="flex-1 w-full bg-[#0D110F] border-2 border-[#465047] p-3 text-xs text-[#79D693] font-pixel-mono placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none leading-relaxed custom-scrollbar"
+                      autoFocus
+                    />
+                    {description && (
+                      <button
+                        type="button"
+                        onClick={resetDescription}
+                        className="absolute top-2 right-2 text-[#F16E5E] hover:text-[#FF3B30] text-sm font-bold font-pixel-heading cursor-pointer bg-[#0D110F] px-1 border border-[#F16E5E]/40"
+                        title="Reset technical scope"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <div className="h-full bg-[#0D110F] border-2 border-[#465047] p-3 overflow-y-auto custom-scrollbar">
+                    <span className="text-[9px] font-pixel-heading text-[#869184] uppercase block mb-1.5 pb-1 border-b border-[#465047]/60">
+                      LIVE MARKDOWN RENDER:
+                    </span>
+                    {description.trim() ? (
+                      <MarkdownRenderer content={description} />
+                    ) : (
+                      <span className="text-[#869184] font-pixel-mono text-xs italic">
+                        &gt; Formatted markdown preview will render here...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : descTab === 'edit' ? (
+                <div className="relative h-full flex flex-col">
+                  <textarea
+                    value={description}
+                    onChange={(e) => updateDescription(e.target.value)}
+                    placeholder="Specify technical constraints, modules, bash commands, techstack, or dependencies..."
+                    className="flex-1 w-full bg-[#0D110F] border-2 border-[#465047] p-3 text-xs text-[#79D693] font-pixel-mono placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none leading-relaxed custom-scrollbar"
+                    autoFocus
+                  />
+                  {description && (
+                    <button
+                      type="button"
+                      onClick={resetDescription}
+                      className="absolute top-2 right-2 text-[#F16E5E] hover:text-[#FF3B30] text-sm font-bold font-pixel-heading cursor-pointer bg-[#0D110F] px-1 border border-[#F16E5E]/40"
+                      title="Reset technical scope"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="h-full bg-[#0D110F] border-2 border-[#465047] p-3 overflow-y-auto custom-scrollbar">
+                  <span className="text-[9px] font-pixel-heading text-[#869184] uppercase block mb-1.5 pb-1 border-b border-[#465047]/60">
+                    LIVE MARKDOWN RENDER:
+                  </span>
+                  {description.trim() ? (
+                    <MarkdownRenderer content={description} />
+                  ) : (
+                    <span className="text-[#869184] font-pixel-mono text-xs italic">
+                      &gt; Formatted markdown preview will render here...
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Bar */}
+            <div className="flex items-center justify-between pt-2 border-t border-[#465047]/60 shrink-0">
+              <span className="text-[10px] font-pixel-mono text-[#869184]">
+                {description.length} characters • {description.split('\n').length} lines • Session auto-saved
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveModalField(null)}
+                className="pixel-btn pixel-btn-primary px-3 py-1 text-xs"
+              >
+                APPLY &amp; RETURN ▶
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
