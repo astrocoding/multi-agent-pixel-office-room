@@ -15,6 +15,7 @@ export const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [activeModel, setActiveModel] = useState<string>('gemini-3.1-flash-lite');
   const [modelTier, setModelTier] = useState<string>('Tier 1');
+  const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const { setAgents, updateAgentStatus } = useAgentStore();
   const { setTasks, addTask, updateTask, addTerminalLog, setClarification } = useTaskStore();
   const { addMessage, fetchSessions } = useChatStore();
@@ -199,29 +200,34 @@ export const App: React.FC = () => {
         {/* Top 6 Agents Status Cards */}
         <AgentStatusOverlay />
 
-        {/* Middle Section: Game Simulation + Office Chat */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-start">
-          {/* Phaser Pixel Office Game World */}
-          <div className="lg:col-span-7 flex flex-col items-center justify-center">
-            <PhaserGame />
+        {/* 2-Column Unified Layout:
+            Left Column: Game World + Task Dispatch Engine (Matching Game Width)
+            Right Column: Office Chat Full Height Stretching All The Way Down */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-stretch min-h-0">
+          {/* Left Column (lg:col-span-7): Pixel Game on Top, Task Dispatch underneath filling the exact width */}
+          <div className="lg:col-span-7 flex flex-col gap-3 min-h-0">
+            <div className="flex flex-col items-center justify-center w-full">
+              <PhaserGame />
+            </div>
+            <div className="flex-1 min-h-[440px]">
+              <TaskPanel onOpenActivityLog={() => setIsActivityLogOpen(true)} />
+            </div>
           </div>
 
-          {/* Office Chat (Global Chat Panel) */}
-          <div className="lg:col-span-5 h-[480px]">
+          {/* Right Column (lg:col-span-5): Office Chat stretching full height to the bottom */}
+          <div className="lg:col-span-5 flex flex-col min-h-[600px] lg:min-h-0 h-full">
             <GlobalChatPanel />
           </div>
         </div>
-
-        {/* Bottom Section: Task Dispatch & Autonomous Engine + Realtime Activity Log */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 h-auto lg:h-[420px] lg:max-h-[440px] min-h-0">
-          <div className="lg:col-span-6 h-[420px] lg:h-full min-h-0">
-            <TaskPanel />
-          </div>
-          <div className="lg:col-span-6 h-[420px] lg:h-full min-h-0">
-            <ActivitySidePanel />
-          </div>
-        </div>
       </main>
+
+      {/* Realtime Activity Log Modal */}
+      {isActivityLogOpen && (
+        <ActivitySidePanel
+          isOpen={isActivityLogOpen}
+          onClose={() => setIsActivityLogOpen(false)}
+        />
+      )}
     </div>
   );
 };

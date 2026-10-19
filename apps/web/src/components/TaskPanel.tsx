@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useTaskStore } from '../stores/useTaskStore.js';
+import { useActivityStore } from '../stores/useActivityStore.js';
 import { socket } from '../services/socket.js';
 import {
   AGENT_CONFIGS,
@@ -10,8 +11,13 @@ import {
 } from '@agent-office/shared';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 
-export const TaskPanel: React.FC = () => {
+interface TaskPanelProps {
+  onOpenActivityLog?: () => void;
+}
+
+export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   const { tasks, activeTaskId, isSubmitting, setIsSubmitting, setActiveTaskId, setTasks } = useTaskStore();
+  const { activities } = useActivityStore();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [targetAgent, setTargetAgent] = useState<AgentId>(AGENT_IDS.LEADER);
@@ -164,14 +170,30 @@ export const TaskPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2.5 sm:p-3 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden">
-      {/* Title Header */}
-      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0">
-        <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5">
+      {/* Title Header with Activity Log Trigger on Far Right */}
+      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
+        <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5 truncate">
           <span>▶</span> TASK DISPATCH &amp; AUTONOMOUS ENGINE
         </h2>
-        <span className="text-[10px] font-pixel-mono text-[#869184] bg-[#0D110F] border border-[#465047] px-1.5 py-0.5">
-          {tasks.length} TASKS
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] font-pixel-mono text-[#869184] bg-[#0D110F] border border-[#465047] px-1.5 py-0.5">
+            {tasks.length} TASKS
+          </span>
+          {onOpenActivityLog && (
+            <button
+              type="button"
+              onClick={onOpenActivityLog}
+              className="pixel-btn pixel-btn-secondary text-[10px] py-0.5 px-2 flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0_#000]"
+              title="Open Realtime Activity Log Modal"
+            >
+              <span className="w-1.5 h-1.5 bg-[#79D693] animate-pulse" />
+              <span>REALTIME LOG</span>
+              <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1 py-0.2 border border-[#465047]">
+                {activities.length}
+              </span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Task Creation Form */}
