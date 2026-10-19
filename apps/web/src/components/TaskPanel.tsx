@@ -169,9 +169,9 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2.5 sm:p-3 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2 sm:p-2.5 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden">
       {/* Title Header with Activity Log Trigger on Far Right */}
-      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
+      <div className="flex items-center justify-between pb-1.5 border-b-2 border-[#465047] mb-1.5 shrink-0 gap-2">
         <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5 truncate">
           <span>▶</span> TASK DISPATCH &amp; AUTONOMOUS ENGINE
         </h2>
@@ -196,51 +196,50 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
         </div>
       </div>
 
-      {/* Task Creation Form */}
+      {/* Task Creation Form (Compact 2-Column Responsive Layout) */}
       <form
         onSubmit={handleSubmit}
-        className="space-y-2 mb-2.5 bg-[#0D110F] p-2.5 border-2 border-[#465047] shadow-[1px_1px_0_#000]"
+        className="space-y-1.5 mb-2 bg-[#0D110F] p-2 border-2 border-[#465047] shadow-[1px_1px_0_#000] shrink-0"
       >
-        <div>
-          <label className="block text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-1">
-            TASK DIRECTIVE:
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. Build authentication pipeline, migrate schema, run tests"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1.5 text-[13px] text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-1">
-            EXECUTION DETAILS &amp; TECHNICAL SCOPE:
-          </label>
-          <textarea
-            rows={2}
-            placeholder="Specify technical constraints, modules, bash commands, techstack, or dependencies..."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-[#121615] border-2 border-[#465047] px-2.5 py-1.5 text-[13px] text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner resize-none"
-            required
-          />
-        </div>
-
-        {/* Attachment Upload & Pill List */}
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider">
-              MULTIMODAL ATTACHMENTS:
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-0.5">
+              TASK DIRECTIVE:
             </label>
+            <input
+              type="text"
+              placeholder="e.g. Build auth pipeline, run tests..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-[#121615] border-2 border-[#465047] px-2 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-[9.5px] font-pixel-heading text-[#B6BFAE] uppercase tracking-wider mb-0.5">
+              TECHNICAL SCOPE &amp; DETAILS:
+            </label>
+            <input
+              type="text"
+              placeholder="Specify constraints, bash commands, techstack..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-[#121615] border-2 border-[#465047] px-2 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none focus:border-[#CCF12B] shadow-inner"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Row with Attachments, Delegate Select, and Submit */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#465047]/60">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="pixel-btn pixel-btn-ghost text-[9.5px] py-0.5 px-2"
+              className="pixel-btn pixel-btn-ghost text-[9px] py-0.5 px-2"
             >
-              + ATTACH FILES
+              + ATTACH FILES {attachments.length > 0 ? `(${attachments.length})` : ''}
             </button>
             <input
               ref={fileInputRef}
@@ -250,64 +249,57 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
               onChange={handleFileChange}
               className="hidden"
             />
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1 max-h-8 overflow-y-auto custom-scrollbar">
+                {attachments.map((att, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 bg-[#1B211D] text-[#F0F1DD] border border-[#465047] px-1.5 py-0.2 text-[9.5px] font-pixel-mono"
+                  >
+                    <span className="max-w-[100px] truncate">{att.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(idx)}
+                      className="text-[#869184] hover:text-[#F16E5E] font-bold font-pixel-heading cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5 max-h-16 overflow-y-auto custom-scrollbar">
-              {attachments.map((att, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1.5 bg-[#1B211D] text-[#F0F1DD] border border-[#465047] px-2 py-0.5 text-[10px] font-pixel-mono"
-                >
-                  <span className="text-[8.5px] font-pixel-heading text-[#CCF12B] bg-[#0D110F] px-1 py-0.2 border border-[#465047]">
-                    {att.mimeType.startsWith('image/') ? 'IMG' : 'DOC'}
-                  </span>
-                  <span className="max-w-[120px] truncate">{att.name}</span>
-                  <span className="text-[#869184] text-[9px]">({formatFileSize(att.size)})</span>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(idx)}
-                    className="text-[#869184] hover:text-[#F16E5E] font-bold font-pixel-heading cursor-pointer ml-1"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-pixel-heading text-[#B6BFAE]">DELEGATE:</span>
             <div className="relative inline-flex items-center">
               <select
                 value={targetAgent}
                 onChange={(e) => setTargetAgent(e.target.value as AgentId)}
-                className="appearance-none bg-[#121615] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+                className="appearance-none bg-[#121615] border-2 border-[#465047] pl-2 pr-7 py-0.5 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
               >
                 <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
-                <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER - CODE/SHELL)</option>
+                <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER)</option>
                 <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
-                <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION &amp; WORKFLOWS)</option>
-                <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC SPECIALIST)</option>
+                <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION ARCHITECT)</option>
+                <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
                 <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
               </select>
-              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
+              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M1 1L5 5L9 1" strokeLinecap="square" />
                 </svg>
               </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
-          >
-            {isSubmitting ? 'DISPATCHING...' : 'EXECUTE DIRECTIVE ▶'}
-          </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="pixel-btn pixel-btn-primary px-2.5 py-0.5 text-[10px]"
+            >
+              {isSubmitting ? 'DISPATCHING...' : 'EXECUTE DIRECTIVE ▶'}
+            </button>
+          </div>
         </div>
       </form>
 

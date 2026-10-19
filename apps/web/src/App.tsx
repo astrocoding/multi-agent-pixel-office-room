@@ -200,22 +200,22 @@ export const App: React.FC = () => {
         {/* Top 6 Agents Status Cards */}
         <AgentStatusOverlay />
 
-        {/* 2-Column Unified Layout:
-            Left Column: Game World + Task Dispatch Engine (Matching Game Width)
-            Right Column: Office Chat Full Height Stretching All The Way Down */}
+        {/* 2-Column Balanced Layout:
+            Left Column: Game World + Task Dispatch Engine (Matching Game Width, Compact Height)
+            Right Column: Office Chat (Proportionally Balanced Height) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-stretch min-h-0">
-          {/* Left Column (lg:col-span-7): Pixel Game on Top, Task Dispatch underneath filling the exact width */}
+          {/* Left Column (lg:col-span-7): Pixel Game on Top, Compact Task Dispatch underneath */}
           <div className="lg:col-span-7 flex flex-col gap-3 min-h-0">
             <div className="flex flex-col items-center justify-center w-full">
               <PhaserGame />
             </div>
-            <div className="flex-1 min-h-[440px]">
+            <div className="h-[250px] max-h-[260px] min-h-0">
               <TaskPanel onOpenActivityLog={() => setIsActivityLogOpen(true)} />
             </div>
           </div>
 
-          {/* Right Column (lg:col-span-5): Office Chat stretching full height to the bottom */}
-          <div className="lg:col-span-5 flex flex-col min-h-[600px] lg:min-h-0 h-full">
+          {/* Right Column (lg:col-span-5): Office Chat with balanced height */}
+          <div className="lg:col-span-5 h-[742px] max-h-[750px] min-h-0 flex flex-col">
             <GlobalChatPanel />
           </div>
         </div>
