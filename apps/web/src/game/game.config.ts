@@ -10,7 +10,13 @@ export const createGameConfig = (parent: HTMLElement): Phaser.Types.Core.GameCon
   height: OfficeLayout.HEIGHT,
   pixelArt: true,
   roundPixels: true,
-  backgroundColor: '#0F172A',
+  backgroundColor: '#090B0A',
+  render: {
+    pixelArt: true,
+    antialias: false,
+    antialiasGL: false,
+    roundPixels: true,
+  },
   input: {
     keyboard: {
       target: window,

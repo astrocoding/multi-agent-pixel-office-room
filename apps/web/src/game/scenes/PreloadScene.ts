@@ -10,37 +10,200 @@ export class PreloadScene extends Phaser.Scene {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    // Loading background
+    // 1. Loading background: retro root dark (#090B0A)
     const bg = this.add.graphics();
-    bg.fillStyle(0x0f172a, 1);
+    bg.fillStyle(0x090b0a, 1);
     bg.fillRect(0, 0, width, height);
 
-    const titleText = this.add.text(width / 2, height / 2 - 24, 'AGENT OFFICE ROOM', {
-      fontFamily: 'monospace, sans-serif',
-      fontSize: '20px',
-      color: '#38BDF8',
+    // Subtle CRT scanline overlay
+    const scanlines = this.add.graphics();
+    scanlines.fillStyle(0x000000, 0.22);
+    for (let y = 0; y < height; y += 4) {
+      scanlines.fillRect(0, y, width, 1);
+    }
+
+    // Corner pixel markers [ + ]
+    const corners = this.add.graphics();
+    corners.lineStyle(1.5, 0x465047, 0.8);
+    // Top-left
+    corners.strokeRect(12, 12, 14, 14);
+    // Top-right
+    corners.strokeRect(width - 26, 12, 14, 14);
+    // Bottom-left
+    corners.strokeRect(12, height - 26, 14, 14);
+    // Bottom-right
+    corners.strokeRect(width - 26, height - 26, 14, 14);
+
+    // 2. Center Pixel Dialog Box (Responsive for mobile & desktop)
+    const isMobile = width < 520;
+    const cardWidth = Math.min(460, Math.max(270, width - 24));
+    const cardHeight = isMobile ? 210 : 220;
+    const cardX = Math.floor((width - cardWidth) / 2);
+    const cardY = Math.floor((height - cardHeight) / 2);
+
+    // Hard pixel drop shadow (pure black offset)
+    const shadowOffset = isMobile ? 4 : 6;
+    const cardShadow = this.add.graphics();
+    cardShadow.fillStyle(0x000000, 1);
+    cardShadow.fillRect(cardX + shadowOffset, cardY + shadowOffset, cardWidth, cardHeight);
+
+    // Card Window Body
+    const cardBg = this.add.graphics();
+    // Surface background (#121615)
+    cardBg.fillStyle(0x121615, 1);
+    cardBg.fillRect(cardX, cardY, cardWidth, cardHeight);
+
+    // Strong pixel border (#899584)
+    cardBg.lineStyle(2, 0x899584, 1);
+    cardBg.strokeRect(cardX, cardY, cardWidth, cardHeight);
+
+    // Header Titlebar (#1B211D)
+    cardBg.fillStyle(0x1b211d, 1);
+    cardBg.fillRect(cardX, cardY, cardWidth, 28);
+    cardBg.lineStyle(1.5, 0x465047, 1);
+    cardBg.lineBetween(cardX, cardY + 28, cardX + cardWidth, cardY + 28);
+
+    // Header elements: system badge & live status
+    this.add
+      .text(cardX + 10, cardY + 14, isMobile ? '► AO-SYSTEM' : '► AO-SYSTEM // BOOTLOADER', {
+        fontFamily: '"Silkscreen", monospace, sans-serif',
+        fontSize: isMobile ? '9px' : '10px',
+        color: '#CCF12B',
+        resolution: 2,
+      })
+      .setOrigin(0, 0.5);
+
+    this.add
+      .text(cardX + cardWidth - 10, cardY + 14, isMobile ? '● INIT' : '● INITIALIZING', {
+        fontFamily: '"Silkscreen", monospace, sans-serif',
+        fontSize: '9px',
+        color: '#79D693',
+        resolution: 2,
+      })
+      .setOrigin(1, 0.5);
+
+    // 3. Title Text: AGENT OFFICE ROOM
+    const titleText = this.add.text(width / 2, cardY + (isMobile ? 52 : 54), 'AGENT OFFICE ROOM', {
+      fontFamily: '"Silkscreen", monospace, sans-serif',
+      fontSize: isMobile ? '13px' : '18px',
+      color: '#F0F1DD',
       fontStyle: 'bold',
+      resolution: 2,
     });
     titleText.setOrigin(0.5, 0.5);
 
-    const progressText = this.add.text(width / 2, height / 2 + 16, 'Loading 2D Pixel Assets...', {
-      fontFamily: 'monospace, sans-serif',
-      fontSize: '12px',
-      color: '#94A3B8',
-    });
-    progressText.setOrigin(0.5, 0.5);
+    // Subtitle / Architecture directive
+    const subtitleText = this.add.text(
+      width / 2,
+      cardY + (isMobile ? 74 : 76),
+      isMobile ? 'MULTI-AGENT WORKSPACE' : 'AUTONOMOUS MULTI-AGENT WORKSPACE',
+      {
+        fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
+        fontSize: isMobile ? '10px' : '12px',
+        color: '#869184',
+        resolution: 2,
+      }
+    );
+    subtitleText.setOrigin(0.5, 0.5);
 
-    // Progress bar
+    // 4. Progress Text & Percentage Indicators
+    const stageText = this.add.text(
+      cardX + 16,
+      cardY + (isMobile ? 106 : 112),
+      isMobile ? '> MOUNTING SPRITES...' : '> MOUNTING PIXEL SPRITES & TEXTURES...',
+      {
+        fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
+        fontSize: isMobile ? '10px' : '11px',
+        color: '#36B9ED',
+        resolution: 2,
+      }
+    );
+    stageText.setOrigin(0, 0.5);
+
+    const percentText = this.add.text(cardX + cardWidth - 16, cardY + (isMobile ? 106 : 112), '[ 0% ]', {
+      fontFamily: '"Silkscreen", monospace, sans-serif',
+      fontSize: isMobile ? '10px' : '11px',
+      color: '#CCF12B',
+      resolution: 2,
+    });
+    percentText.setOrigin(1, 0.5);
+
+    // 5. Retro Pixel Loading Bar (Strictly 0-radius pixel geometry)
+    const barWidth = cardWidth - 32;
+    const barHeight = isMobile ? 14 : 18;
+    const barX = cardX + 16;
+    const barY = cardY + (isMobile ? 120 : 126);
+
     const progressBox = this.add.graphics();
     const progressBar = this.add.graphics();
-    progressBox.fillStyle(0x1e293b, 0.8);
-    progressBox.fillRoundedRect(width / 2 - 120, height / 2 + 40, 240, 10, 5);
 
+    // Track frame & background (#0D110F with #465047 border)
+    progressBox.fillStyle(0x0d110f, 1);
+    progressBox.fillRect(barX, barY, barWidth, barHeight);
+    progressBox.lineStyle(2, 0x465047, 1);
+    progressBox.strokeRect(barX, barY, barWidth, barHeight);
+
+    // 6. Bottom Navigation Hint Divider & Text
+    cardBg.lineStyle(1, 0x1b211d, 1);
+    cardBg.lineBetween(cardX + 16, cardY + 164, cardX + cardWidth - 16, cardY + 164);
+
+    this.add
+      .text(
+        width / 2,
+        cardY + 184,
+        isMobile ? '[WASD] WALK  •  [E] INTERACT' : 'CONTROLS: [WASD] WALK  •  [E] INTERACT WITH AGENTS',
+        {
+          fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
+          fontSize: isMobile ? '10px' : '11px',
+          color: '#869184',
+          resolution: 2,
+        }
+      )
+      .setOrigin(0.5, 0.5);
+
+    // Real-time loader event listener
     this.load.on('progress', (value: number) => {
       progressBar.clear();
-      progressBar.fillStyle(0x38bdf8, 1);
-      progressBar.fillRoundedRect(width / 2 - 120, height / 2 + 40, 240 * value, 10, 5);
-      progressText.setText(`Loading 2D Pixel Assets... ${Math.round(value * 100)}%`);
+
+      const innerWidth = barWidth - 4;
+      const innerHeight = barHeight - 4;
+      const currentFill = Math.max(0, Math.floor(innerWidth * value));
+
+      if (currentFill > 0) {
+        // Main retro lime progress fill (#CCF12B)
+        progressBar.fillStyle(0xccf12b, 1);
+        progressBar.fillRect(barX + 2, barY + 2, currentFill, innerHeight);
+
+        // Subtle top highlight line (#E6FF66) for sharp pixel depth
+        progressBar.fillStyle(0xe6ff66, 0.6);
+        progressBar.fillRect(barX + 2, barY + 2, currentFill, 2);
+
+        // Retro segmented tick notches every 16px
+        progressBar.fillStyle(0x0d110f, 0.85);
+        for (let tickX = barX + 2 + 16; tickX < barX + 2 + currentFill; tickX += 16) {
+          progressBar.fillRect(tickX, barY + 2, 2, innerHeight);
+        }
+      }
+
+      const pct = Math.round(value * 100);
+      percentText.setText(`[ ${pct}% ]`);
+
+      if (pct < 25) {
+        stageText.setText(isMobile ? '> MOUNTING SPRITES...' : '> MOUNTING CHARACTER SPRITES...');
+        stageText.setColor('#36B9ED');
+      } else if (pct < 55) {
+        stageText.setText(isMobile ? '> PARSING TILES...' : '> PARSING OFFICE TILES & PROPS...');
+        stageText.setColor('#36B9ED');
+      } else if (pct < 80) {
+        stageText.setText(isMobile ? '> CONFIGURING UI...' : '> CONFIGURING WORKSTATIONS & UI...');
+        stageText.setColor('#36B9ED');
+      } else if (pct < 100) {
+        stageText.setText(isMobile ? '> INITIALIZING CORE...' : '> INITIALIZING AUTONOMOUS CORE...');
+        stageText.setColor('#F5BC4D');
+      } else {
+        stageText.setText(isMobile ? '> READY. BOOTING...' : '> ALL ASSETS READY. BOOTING OFFICE...');
+        stageText.setColor('#79D693');
+      }
     });
 
     // 1. CHARACTER SPRITESHEETS (96x128 px, 3 cols x 4 rows, 32x32 frames)
@@ -236,30 +399,55 @@ export class PreloadScene extends Phaser.Scene {
     ];
 
     list.forEach((item) => {
-      const portrait = this.textures.createCanvas(`portrait_${item.id}`, 40, 40);
-      if (!portrait) return;
-      const ctx = portrait.context;
-
-      // Dark frame with agent accent border
-      ctx.fillStyle = '#0F172A';
-      ctx.fillRect(0, 0, 40, 40);
-      ctx.fillStyle = '#1E293B';
-      ctx.fillRect(2, 2, 36, 36);
-
-      // Accent border
-      ctx.strokeStyle = item.color;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(1, 1, 38, 38);
-
-      // Draw the front-facing character frame (frame 0) scaled up into the portrait
       const source = this.textures.get(item.spriteKey)?.getSourceImage() as HTMLImageElement;
-      if (source) {
-        // Source frame 0: rect (0, 0, 32, 32)
+
+      // 1. Dialogue Portrait (40x40) - Vertically and horizontally centered
+      const portrait = this.textures.createCanvas(`portrait_${item.id}`, 40, 40);
+      if (portrait) {
+        const ctx = portrait.context;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(source, 0, 0, 32, 32, 4, 4, 32, 32);
+
+        // Dark frame with agent accent border
+        ctx.fillStyle = '#090B0A';
+        ctx.fillRect(0, 0, 40, 40);
+        ctx.fillStyle = '#121615';
+        ctx.fillRect(2, 2, 36, 36);
+
+        // Accent border
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(1, 1, 38, 38);
+
+        // Character frame 0 bbox is (7, 5, 26, 32). Center vertically inside 40x40 canvas
+        if (source) {
+          ctx.drawImage(source, 0, 0, 32, 32, 4, 1, 32, 32);
+        }
+
+        portrait.refresh();
       }
 
-      portrait.refresh();
+      // 2. Mini-Portrait (18x18) - 1:1 pixel-perfect crop of head & shoulders for NPC Prompt Pills
+      const miniPortrait = this.textures.createCanvas(`mini_portrait_${item.id}`, 18, 18);
+      if (miniPortrait) {
+        const mCtx = miniPortrait.context;
+        mCtx.imageSmoothingEnabled = false;
+
+        // Dark background (#090B0A)
+        mCtx.fillStyle = '#090B0A';
+        mCtx.fillRect(0, 0, 18, 18);
+
+        // 1:1 Pixel-perfect crop of head and shoulders (8, 5, 16, 16) mapped to (1, 1, 16, 16)
+        if (source) {
+          mCtx.drawImage(source, 8, 5, 16, 16, 1, 1, 16, 16);
+        }
+
+        // Crisp 1px pixel border with agent accent color
+        mCtx.strokeStyle = item.color;
+        mCtx.lineWidth = 1;
+        mCtx.strokeRect(0.5, 0.5, 17, 17);
+
+        miniPortrait.refresh();
+      }
     });
   }
 
@@ -268,7 +456,7 @@ export class PreloadScene extends Phaser.Scene {
     const ring = this.textures.createCanvas('ui_target_ring', 36, 18);
     if (ring) {
       const ctx = ring.context;
-      ctx.strokeStyle = '#38BDF8';
+      ctx.strokeStyle = '#CCF12B';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([3, 2]);
       ctx.beginPath();
