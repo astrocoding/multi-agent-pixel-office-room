@@ -3,18 +3,21 @@ import { PhaserGame } from './components/PhaserGame.js';
 import { TaskPanel } from './components/TaskPanel.js';
 import { GlobalChatPanel } from './components/GlobalChatPanel.js';
 import { ActivitySidePanel } from './components/ActivitySidePanel.js';
-import { AgentStatusOverlay } from './components/AgentStatusOverlay.js';
+import { ModelRouterSelect } from './components/ModelRouterSelect.js';
+import { Footer } from './components/Footer.js';
 import { socket } from './services/socket.js';
 import { useAgentStore } from './stores/useAgentStore.js';
 import { useTaskStore } from './stores/useTaskStore.js';
 import { useChatStore } from './stores/useChatStore.js';
 import { useActivityStore } from './stores/useActivityStore.js';
 import { gameBridge } from './game/ui-bridge/GameBridge.js';
+import appLogo from './assets/android-chrome-512x512.png';
 
 export const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [activeModel, setActiveModel] = useState<string>('gemini-3.1-flash-lite');
-  const [modelTier, setModelTier] = useState<string>('Tier 1');
+  const [modelTier, setModelTier] = useState<string>('cheapest');
+  const [isAutoRouter, setIsAutoRouter] = useState<boolean>(true);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const { setAgents, updateAgentStatus } = useAgentStore();
   const { setTasks, addTask, updateTask, addTerminalLog, setClarification } = useTaskStore();
@@ -28,7 +31,8 @@ export const App: React.FC = () => {
         const data = await res.json();
         if (data.activeModel) {
           setActiveModel(data.activeModel);
-          setModelTier(data.costTier || 'Auto');
+          setModelTier(data.costTier || 'cheapest');
+          setIsAutoRouter(data.isAutoRouter ?? true);
         }
       }
     } catch {
@@ -147,49 +151,45 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#090B0A] text-[#F0F1DD] flex flex-col font-pixel-body">
       {/* Top Header Bar - Authentic Retro Terminal Control Bar */}
-      <header className="bg-[#121615] border-b-2 border-[#465047] px-4 py-2 flex items-center justify-between shrink-0 shadow-[0_2px_0_#000]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#1B211D] border-2 border-[#CCF12B] flex items-center justify-center font-pixel-heading font-bold text-xs text-[#CCF12B] shadow-[2px_2px_0_#000000]">
-            AO
-          </div>
-          <div>
-            <h1 className="text-xs sm:text-sm font-bold tracking-wider text-[#F0F1DD] font-pixel-heading flex items-center gap-2">
-              AGENT OFFICE ROOM{' '}
-              <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1.5 py-0.5 border border-[#465047] font-pixel-heading">
-                v1.0
-              </span>
-            </h1>
-            <p className="text-[11px] text-[#B6BFAE] font-pixel-body">
-              2D Pixel Simulation • Multi-Agent Autonomous Automation Runtime
-            </p>
-          </div>
+      <header className="bg-[#121615] border-b-2 border-[#465047] px-3 sm:px-4 py-2 flex items-center justify-between shrink-0 shadow-[0_2px_0_#000]">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <img
+            src={appLogo}
+            alt="Agent Office Room"
+            className="w-8 h-8 object-contain shrink-0 select-none"
+          />
+          {/* Title & Version - Hidden on mobile screens */}
+          <h1 className="hidden sm:flex text-xs sm:text-sm font-bold tracking-wider text-[#F0F1DD] font-pixel-heading items-center gap-2 whitespace-nowrap">
+            AGENT OFFICE ROOM{' '}
+            <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1.5 py-0.5 border border-[#465047] font-pixel-heading">
+              v1.0
+            </span>
+          </h1>
         </div>
 
-        {/* Status Pill & Controls Guide */}
-        <div className="flex items-center gap-3 text-xs font-pixel-heading">
-          <div className="hidden lg:flex items-center gap-2 text-[#B6BFAE] text-[10px] bg-[#0D110F] px-2.5 py-1 border border-[#465047]">
-            <span className="text-[#CCF12B] font-bold">WALK:</span> WASD / ARROWS
-            <span className="text-[#465047]">|</span>
-            <span className="text-[#36B9ED] font-bold">INTERACT:</span> [E] OR CLICK NPC
-          </div>
+        {/* Model Router Select Dropdown & Runtime Connection Pill */}
+        <div className="flex items-center gap-2 sm:gap-3 text-xs font-pixel-heading shrink-0">
+          {/* Custom Model Router Selector Dropdown */}
+          <ModelRouterSelect
+            activeModel={activeModel}
+            costTier={modelTier}
+            isAutoRouter={isAutoRouter}
+            onModelSwitched={fetchModelRouter}
+          />
 
-          {/* AI Model Auto-Router Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#0D110F] border border-[#465047] text-[10px]">
-            <span className="text-[#36B9ED] font-bold">ROUTER:</span>
-            <span className="text-[#F0F1DD] font-semibold">{activeModel}</span>
-            <span className="text-[9px] bg-[#1B211D] text-[#CCF12B] border border-[#465047] px-1 py-0.2 uppercase">
-              {modelTier}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 bg-[#0D110F] border border-[#465047] px-2.5 py-1">
+          {/* Runtime Connection Pill - Hidden on mobile screens */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#0D110F] border border-[#465047] px-2.5 py-1 whitespace-nowrap">
             <span
               className={`w-2 h-2 ${
                 isConnected ? 'bg-[#79D693]' : 'bg-[#F16E5E]'
               }`}
             />
-            <span className={`text-[10px] font-bold ${isConnected ? 'text-[#79D693]' : 'text-[#F16E5E]'}`}>
-              {isConnected ? '● RUNTIME CONNECTED' : '■ OFFLINE'}
+            <span
+              className={`text-[10px] font-bold tracking-wider uppercase ${
+                isConnected ? 'text-[#79D693]' : 'text-[#F16E5E]'
+              }`}
+            >
+              {isConnected ? 'connected' : 'offline'}
             </span>
           </div>
         </div>
@@ -197,29 +197,33 @@ export const App: React.FC = () => {
 
       {/* Main Container */}
       <main className="flex-1 p-3 sm:p-4 max-w-[1750px] w-full mx-auto flex flex-col gap-3">
-        {/* Top 6 Agents Status Cards */}
-        <AgentStatusOverlay />
-
         {/* 2-Column Balanced Layout:
-            Left Column: Game World + Task Dispatch Engine (Matching Game Width, Compact Height)
-            Right Column: Office Chat (Proportionally Balanced Height) */}
+            Left Column: Game World + Task Dispatch Engine (Matching Game Width, Comfortable Height)
+            Right Column: Office Chat (Proportionally Balanced Full Height) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 items-stretch min-h-0">
-          {/* Left Column (lg:col-span-7): Pixel Game on Top, Compact Task Dispatch underneath */}
+          {/* Left Column (lg:col-span-7): Pixel Game on Top, Task Dispatch underneath */}
           <div className="lg:col-span-7 flex flex-col gap-3 min-h-0">
             <div className="flex flex-col items-center justify-center w-full">
               <PhaserGame />
             </div>
-            <div className="h-[250px] max-h-[260px] min-h-0">
-              <TaskPanel onOpenActivityLog={() => setIsActivityLogOpen(true)} />
+            <div className="h-[280px] max-h-[300px] min-h-0">
+              <TaskPanel />
             </div>
           </div>
 
           {/* Right Column (lg:col-span-5): Office Chat with balanced height */}
-          <div className="lg:col-span-5 h-[742px] max-h-[750px] min-h-0 flex flex-col">
+          <div className="lg:col-span-5 h-[772px] max-h-[780px] min-h-0 flex flex-col">
             <GlobalChatPanel />
           </div>
         </div>
       </main>
+
+      {/* Retro Pixel Footer Component */}
+      <Footer
+        onOpenActivityLog={() => setIsActivityLogOpen(true)}
+        isConnected={isConnected}
+        activeModel={activeModel}
+      />
 
       {/* Realtime Activity Log Modal */}
       {isActivityLogOpen && (

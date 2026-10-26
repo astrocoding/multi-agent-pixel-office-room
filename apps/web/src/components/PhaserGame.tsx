@@ -14,9 +14,21 @@ export const PhaserGame: React.FC = () => {
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return;
 
-    const config = createGameConfig(containerRef.current);
-    const game = new Phaser.Game(config);
-    gameRef.current = game;
+    let destroyed = false;
+
+    // Ensure all custom pixel fonts (Silkscreen, VT323, Share Tech Mono) are loaded before mounting Phaser
+    const initGame = () => {
+      if (destroyed || !containerRef.current || gameRef.current) return;
+      const config = createGameConfig(containerRef.current);
+      const game = new Phaser.Game(config);
+      gameRef.current = game;
+    };
+
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(initGame);
+    } else {
+      initGame();
+    }
 
     // Listen to game events
     const unsubProximity = gameBridge.on('player:proximity', (data) => {
@@ -33,11 +45,14 @@ export const PhaserGame: React.FC = () => {
     });
 
     return () => {
+      destroyed = true;
       unsubProximity();
       unsubInteract();
       unsubPos();
-      game.destroy(true);
-      gameRef.current = null;
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
     };
   }, [setNearbyAgentId, setSelectedAgentId]);
 
