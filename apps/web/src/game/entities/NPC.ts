@@ -202,21 +202,23 @@ export class NPC extends Phaser.Physics.Arcade.Sprite {
     const cfg = AGENT_CONFIGS[agentId];
 
     // Agent name tag (Zen, Dre, Iky, Gus, Rai, Dhea)
-    this.nameText = scene.add.text(x, y - 26, cfg.name.split(' ')[0], {
-      fontFamily: 'monospace, sans-serif',
+    this.nameText = scene.add.text(Math.round(x), Math.round(y - 26), cfg.name.split(' ')[0], {
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '10px',
-      color: '#FFFFFF',
-      backgroundColor: '#0F172A',
+      color: '#F0F1DD',
+      backgroundColor: '#0D110F',
       padding: { x: 5, y: 2 },
+      resolution: 2,
     });
     this.nameText.setOrigin(0.5, 0.5);
     this.nameText.setDepth(y + 14);
 
     // State badge text
-    this.stateText = scene.add.text(x, y + 24, '• idle', {
-      fontFamily: 'monospace, sans-serif',
-      fontSize: '9px',
-      color: '#94A3B8',
+    this.stateText = scene.add.text(Math.round(x), Math.round(y + 24), '• idle', {
+      fontFamily: '"Share Tech Mono", monospace, sans-serif',
+      fontSize: '10px',
+      color: '#869184',
+      resolution: 2,
     });
     this.stateText.setOrigin(0.5, 0.5);
     this.stateText.setDepth(y + 14);
@@ -236,25 +238,43 @@ export class NPC extends Phaser.Physics.Arcade.Sprite {
       ease: 'Sine.easeInOut',
     });
 
-    // Interaction prompt [E]
-    const promptBg = scene.add.graphics();
-    promptBg.fillStyle(0x0f172a, 0.94);
-    promptBg.lineStyle(1.5, 0x38bdf8, 1);
-    promptBg.fillRoundedRect(-36, -12, 72, 24, 6);
-    promptBg.strokeRoundedRect(-36, -12, 72, 24, 6);
-
-    const miniPortrait = scene.add.image(-22, 0, `portrait_${agentId}`);
-    miniPortrait.setDisplaySize(18, 18);
-
-    const promptTxt = scene.add.text(6, 0, '[E] Talk', {
-      fontFamily: 'monospace, sans-serif',
+    // Interaction prompt [E] (Retro pixel hard rectangular pill with dynamic width & spacing)
+    const promptTxt = scene.add.text(0, 0, '[E] Talk', {
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '10px',
-      fontStyle: 'bold',
-      color: '#F8FAFC',
+      color: '#CCF12B',
+      resolution: 2,
     });
-    promptTxt.setOrigin(0.5, 0.5);
+    promptTxt.setOrigin(0, 0.5);
 
-    this.promptIndicator = scene.add.container(x, y - 52, [promptBg, miniPortrait, promptTxt]);
+    const avatarWidth = 18;
+    const paddingLeft = 6;
+    const gapAvatarText = 8; // Visible comfortable spacing between avatar and [E] Talk
+    const paddingRight = 8;
+    const textWidth = Math.ceil(promptTxt.width);
+    const boxWidth = paddingLeft + avatarWidth + gapAvatarText + textWidth + paddingRight;
+    const boxHeight = 24;
+
+    const promptBg = scene.add.graphics();
+    promptBg.fillStyle(0x0d110f, 0.95);
+    promptBg.lineStyle(1.5, 0xccf12b, 1);
+    promptBg.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+    promptBg.strokeRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+
+    // Mini portrait 1:1 pixel avatar centered vertically
+    const miniX = Math.round(-boxWidth / 2 + paddingLeft + avatarWidth / 2);
+    const miniPortrait = scene.add.image(miniX, 0, `mini_portrait_${agentId}`);
+    miniPortrait.setOrigin(0.5, 0.5);
+
+    // Prompt text positioned with generous 8px gap after avatar
+    const textX = Math.round(-boxWidth / 2 + paddingLeft + avatarWidth + gapAvatarText);
+    promptTxt.setPosition(textX, 0);
+
+    this.promptIndicator = scene.add.container(Math.round(x), Math.round(y - 52), [
+      promptBg,
+      miniPortrait,
+      promptTxt,
+    ]);
     this.promptIndicator.setDepth(4500);
     this.promptIndicator.setVisible(false);
 
@@ -268,12 +288,14 @@ export class NPC extends Phaser.Physics.Arcade.Sprite {
     this.scheduleNextAutonomousAction();
   }
 
-  // Update attached UI elements positions every frame
+  // Update attached UI elements positions every frame (snapped to whole integer coordinates)
   private updateAttachedElements(): void {
-    this.nameText?.setPosition(this.x, this.y - 26);
-    this.stateText?.setPosition(this.x, this.y + 24);
-    this.statusIcon?.setPosition(this.x, this.y - 42);
-    this.promptIndicator?.setPosition(this.x, this.y - 52);
+    const rx = Math.round(this.x);
+    const ry = Math.round(this.y);
+    this.nameText?.setPosition(rx, ry - 26);
+    this.stateText?.setPosition(rx, ry + 24);
+    this.statusIcon?.setPosition(rx, ry - 42);
+    this.promptIndicator?.setPosition(rx, ry - 52);
     this.setDepth(this.y + 10);
     this.nameText?.setDepth(this.y + 14);
     this.stateText?.setDepth(this.y + 14);

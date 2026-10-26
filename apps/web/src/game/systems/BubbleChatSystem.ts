@@ -33,13 +33,14 @@ export class BubbleChatSystem {
       .replace(/^#{1,4}\s+/gm, '')
       .trim();
 
-    // Pixel styled text
+    // Pixel styled text with crisp 2x resolution
     const textObj = this.scene.add.text(0, 0, cleanText, {
-      fontFamily: '"Pixelify Sans", "VT323", monospace, sans-serif',
+      fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
       fontSize: '11px',
       color: bubbleType === 'alert' ? '#F16E5E' : '#F0F1DD',
       align: 'center',
       wordWrap: { width: maxTextWidth, useAdvancedWrap: true },
+      resolution: 2,
     });
     textObj.setOrigin(0.5, 0.5);
 

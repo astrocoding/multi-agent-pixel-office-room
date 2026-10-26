@@ -23,7 +23,9 @@ export class OfficeScene extends Phaser.Scene {
   private nearestInteractiveProp: FurnitureItem | null = null;
   private targetRing!: Phaser.GameObjects.Image;
   private propPromptIndicator!: Phaser.GameObjects.Container;
+  private propPromptBg!: Phaser.GameObjects.Graphics;
   private propPromptText!: Phaser.GameObjects.Text;
+  private currentPropPromptText: string = '';
 
   // In-Game RPG Dialogue Box
   private dialogueBoxContainer!: Phaser.GameObjects.Container;
@@ -330,25 +332,43 @@ export class OfficeScene extends Phaser.Scene {
     });
   }
 
-  // Interactive Prop Prompt Pill
+  // Interactive Prop Prompt Pill (Retro pixel hard rectangular pill with dynamic width)
   private createPropPromptIndicator(): void {
-    const promptBg = this.add.graphics();
-    promptBg.fillStyle(0x0f172a, 0.94);
-    promptBg.lineStyle(1.5, 0x10b981, 1);
-    promptBg.fillRoundedRect(-54, -13, 108, 26, 6);
-    promptBg.strokeRoundedRect(-54, -13, 108, 26, 6);
+    this.propPromptBg = this.add.graphics();
 
     this.propPromptText = this.add.text(0, 0, '[E] Interact', {
-      fontFamily: 'monospace, sans-serif',
+      fontFamily: '"Silkscreen", monospace, sans-serif',
       fontSize: '10px',
-      fontStyle: 'bold',
-      color: '#34D399',
+      color: '#CCF12B',
+      resolution: 2,
     });
     this.propPromptText.setOrigin(0.5, 0.5);
 
-    this.propPromptIndicator = this.add.container(0, 0, [promptBg, this.propPromptText]);
+    this.propPromptIndicator = this.add.container(0, 0, [this.propPromptBg, this.propPromptText]);
     this.propPromptIndicator.setDepth(4500);
     this.propPromptIndicator.setVisible(false);
+    this.currentPropPromptText = '';
+  }
+
+  // Dynamic recalculation of prompt background to prevent long prop text from overflowing borders
+  private updatePropPrompt(text: string): void {
+    if (this.currentPropPromptText === text) return;
+    this.currentPropPromptText = text;
+    this.propPromptText.setText(text);
+
+    // Generous horizontal padding (12px on left & right) so text never overflows
+    const paddingX = 24;
+    const textWidth = Math.ceil(this.propPromptText.width);
+    const boxWidth = Math.max(90, textWidth + paddingX);
+    const boxHeight = 24;
+
+    this.propPromptBg.clear();
+    this.propPromptBg.fillStyle(0x0d110f, 0.95);
+    this.propPromptBg.lineStyle(1.5, 0xccf12b, 1);
+    this.propPromptBg.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+    this.propPromptBg.strokeRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+
+    this.propPromptText.setPosition(0, 0);
   }
 
   // In-Game HUD Clock
@@ -364,6 +384,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#CCF12B',
+      resolution: 2,
     });
 
     this.hudContainer = this.add.container(565, 42, [bg, this.hudClockText]);
@@ -416,19 +437,22 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#CCF12B',
+      resolution: 2,
     });
 
     this.dialogueRoleText = this.add.text(70, 26, 'Chief of Staff • Orchestrator', {
-      fontFamily: '"Pixelify Sans", monospace, sans-serif',
+      fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
       fontSize: '10px',
       color: '#B6BFAE',
+      resolution: 2,
     });
 
     this.dialogueBodyText = this.add.text(70, 42, '', {
-      fontFamily: '"Pixelify Sans", monospace, sans-serif',
+      fontFamily: '"Share Tech Mono", "VT323", monospace, sans-serif',
       fontSize: '11px',
       color: '#F0F1DD',
       wordWrap: { width: 480, useAdvancedWrap: true },
+      resolution: 2,
     });
 
     // Interactive Action Buttons at bottom of Dialogue Box
@@ -437,6 +461,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '9px',
       color: '#36B9ED',
       fontStyle: 'bold',
+      resolution: 2,
     });
     opt1.setInteractive({ useHandCursor: true });
     opt1.on('pointerover', () => opt1.setColor('#CCF12B'));
@@ -453,6 +478,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '9px',
       color: '#36B9ED',
       fontStyle: 'bold',
+      resolution: 2,
     });
     opt2.setInteractive({ useHandCursor: true });
     opt2.on('pointerover', () => opt2.setColor('#CCF12B'));
@@ -470,6 +496,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '9px',
       color: '#36B9ED',
       fontStyle: 'bold',
+      resolution: 2,
     });
     opt3.setInteractive({ useHandCursor: true });
     opt3.on('pointerover', () => opt3.setColor('#CCF12B'));
@@ -485,6 +512,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '9px',
       color: '#869184',
       fontStyle: 'bold',
+      resolution: 2,
     });
     optClose.setInteractive({ useHandCursor: true });
     optClose.on('pointerover', () => optClose.setColor('#F16E5E'));
@@ -515,6 +543,7 @@ export class OfficeScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#B6BFAE',
+      resolution: 2,
     });
     closeBtnText.setOrigin(0.5, 0.5);
 
@@ -784,8 +813,8 @@ export class OfficeScene extends Phaser.Scene {
 
     if (nearestProp && !nearestAgent) {
       this.nearestInteractiveProp = nearestProp;
-      this.propPromptIndicator.setPosition(nearestProp.x, nearestProp.y - 28);
-      this.propPromptText.setText(nearestProp.promptText || '[E] Interact');
+      this.propPromptIndicator.setPosition(Math.round(nearestProp.x), Math.round(nearestProp.y - 28));
+      this.updatePropPrompt(nearestProp.promptText || '[E] Interact');
       this.propPromptIndicator.setVisible(true);
 
       if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
@@ -794,6 +823,7 @@ export class OfficeScene extends Phaser.Scene {
     } else {
       this.nearestInteractiveProp = null;
       this.propPromptIndicator.setVisible(false);
+      this.currentPropPromptText = '';
     }
 
     // 3. Dialogue Box Shortcuts
