@@ -79,5 +79,39 @@ export class QuerySafety {
 
     return `<safe_${tag}_record integrity="verified">\n${sanitized}\n</safe_${tag}_record>`;
   }
+
+  /**
+   * Enforces strict Trademark & Brand Identity protection.
+   * Prevents internal model vendor names (Google, Gemini, Google ADK, ADK Swarm)
+   * from leaking to the user/player. Replaces leaks with "Agent Office Team" or "Agent Office".
+   */
+  public static sanitizeBrandIdentity(text: string): string {
+    if (!text || typeof text !== 'string') return text;
+    let cleaned = text;
+
+    // 1. Long specific multi-word trademark / swarm phrases
+    cleaned = cleaned.replace(/\bGoogle\s+ADK\s+Autonomous\s+Multi-Agent\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bGoogle\s+ADK\s+Multi-Agent\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bADK\s+Autonomous\s+Multi-Agent\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bAutonomous\s+Multi-Agent\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bGoogle\s+ADK\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bADK\s+Swarm\b/gi, 'Agent Office Team');
+    cleaned = cleaned.replace(/\bGoogle\s+ADK\b/gi, 'Agent Office');
+    cleaned = cleaned.replace(/\bADK\s+Agent\b/gi, 'Agent Office Specialist');
+    cleaned = cleaned.replace(/\bADK\s+Runtime\b/gi, 'Agent Office Runtime');
+    cleaned = cleaned.replace(/\bGoogle\s+Gemini\b/gi, 'Agent Office Engine');
+
+    // 2. Indonesian task completion phrases
+    cleaned = cleaned.replace(
+      /diselesaikan\s+oleh\s+(?:Google\s+ADK|Google|ADK)(?:\s+Autonomous|\s+Multi-Agent|\s+Swarm)*/gi,
+      'diselesaikan oleh Agent Office Team'
+    );
+    cleaned = cleaned.replace(
+      /dikerjakan\s+oleh\s+(?:Google\s+ADK|Google|ADK)(?:\s+Autonomous|\s+Multi-Agent|\s+Swarm)*/gi,
+      'dikerjakan oleh Agent Office Team'
+    );
+
+    return cleaned;
+  }
 }
 
