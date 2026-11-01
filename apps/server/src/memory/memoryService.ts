@@ -132,8 +132,9 @@ export class MemoryService {
   ): Promise<void> {
     const projectScope = task.projectName || 'default';
     const cleanDeliverable = finalDeliverable.slice(0, 3000);
+    const sanitizedExecutedBy = QuerySafety.sanitizeBrandIdentity(executedBy || 'Agent Office Team');
 
-    const factSummary = `Tugas #${task.id}: "${task.title}". Status: ${task.status}. Diselesaikan oleh: ${executedBy}. Output: ${cleanDeliverable.slice(0, 250)}...`;
+    const factSummary = `Tugas #${task.id}: "${task.title}". Status: ${task.status}. Diselesaikan oleh: ${sanitizedExecutedBy}. Output: ${cleanDeliverable.slice(0, 250)}...`;
 
     // 1. Store in pgvector memory
     await this.storeMemory(AGENT_IDS.MEMORY, 'episodic', factSummary, {
@@ -145,7 +146,7 @@ export class MemoryService {
       metadata: {
         taskId: task.id,
         title: task.title,
-        executedBy,
+        executedBy: sanitizedExecutedBy,
         qaVerdict: task.qaVerdict || 'APPROVED',
       },
     });
@@ -158,7 +159,7 @@ export class MemoryService {
       status: task.status,
       projectName: projectScope,
       intent: task.intent,
-      executedBy,
+      executedBy: sanitizedExecutedBy,
       finalDeliverable: cleanDeliverable,
       qaVerdict: task.qaVerdict || 'APPROVED',
       updatedAt: new Date().toISOString(),
@@ -297,10 +298,15 @@ export class MemoryService {
       status: task.status,
       projectName: task.projectName,
       intent: task.intent,
+      executedBy: QuerySafety.sanitizeBrandIdentity(
+        (task.outputPayload?.executedBy as string) || 'Agent Office Team'
+      ),
       qaVerdict: task.qaVerdict || 'APPROVED',
       qaNotes: task.qaNotes,
       handoffChain: task.handoffChain,
-      finalDeliverable: task.outputPayload?.finalDeliverable || 'No deliverable recorded.',
+      finalDeliverable: QuerySafety.sanitizeBrandIdentity(
+        (task.outputPayload?.finalDeliverable as string) || 'No deliverable recorded.'
+      ),
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
     };
