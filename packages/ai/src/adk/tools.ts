@@ -1,6 +1,7 @@
 import { FunctionTool } from '@google/adk';
 import { z } from 'zod';
 import { searchOfficeSop, type SopDocument } from '../knowledge/officeSop.js';
+import { GEMINI_MODEL_CATALOG } from '../adapters/modelProvider.js';
 
 export interface OfficeToolHandlers {
   executeBash: (params: { command: string; workingDirectory?: string }) => Promise<{
@@ -127,6 +128,27 @@ export interface OfficeToolHandlers {
   }) => Promise<{
     totalFound: number;
     sops: SopDocument[];
+    formattedSummary: string;
+  }>;
+  queryModelTradeoffs?: (params: {
+    taskType?: string;
+  }) => Promise<unknown>;
+  queryHistoricalChat?: (params: {
+    query?: string;
+    timeRange?: 'today' | 'yesterday' | 'two_days_ago' | 'three_days_ago' | 'this_week' | 'all';
+    limit?: number;
+    sessionId?: string;
+  }) => Promise<{
+    totalFound: number;
+    messages: Array<{
+      id: string;
+      sender: string;
+      senderName: string;
+      text: string;
+      timestamp: string;
+      relativeDate: string;
+      attachments?: Array<{ name: string; type: string }>;
+    }>;
     formattedSummary: string;
   }>;
 }
@@ -433,6 +455,59 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     },
   });
 
+  const queryModelTradeoffsTool = new FunctionTool({
+    name: 'query_model_tradeoffs',
+    description:
+      'Queries the AI Model Router catalog and historical performance benchmarks. Use this to learn which model is most cost-effective, lowest latency, or has the necessary reasoning depth for code generation, QA evaluation, or task planning.',
+    parameters: z.object({
+      taskType: z
+        .enum(['chat', 'task_planning', 'code_generation', 'qa_evaluation', 'tool_calling', 'multimodal', 'all'])
+        .optional()
+        .describe('The type of work to compare tradeoffs for.'),
+    }),
+    execute: async ({ taskType }) => {
+      if (handlers.queryModelTradeoffs) {
+        return await handlers.queryModelTradeoffs({ taskType });
+      }
+      return {
+        catalog: GEMINI_MODEL_CATALOG,
+        tradeoffSummary: GEMINI_MODEL_CATALOG.map((m) => ({
+          modelId: m.id,
+          name: m.name,
+          costTier: m.costTier,
+          pricing: `$${m.inputCostPer1M} in / $${m.outputCostPer1M} out per 1M tokens`,
+          tradeoffs: m.tradeoffs,
+          recommendedFor: m.recommendedFor,
+        })),
+      };
+    },
+  });
+
+  const queryHistoricalChatTool = new FunctionTool({
+    name: 'query_historical_chat',
+    description:
+      'Queries historical conversation logs and time-series interactions. Use this whenever the Boss refers to past discussions, previous days (e.g. "kemarin", "dua hari lalu", "minggu lalu"), prior attachments, or instructions from earlier dates. Enables accurate chronological recall and reasoning.',
+    parameters: z.object({
+      query: z.string().optional().describe('Keyword or search term in past messages.'),
+      timeRange: z
+        .enum(['today', 'yesterday', 'two_days_ago', 'three_days_ago', 'this_week', 'all'])
+        .optional()
+        .describe('Time series filter: "today", "yesterday", "two_days_ago", "three_days_ago", "this_week", or "all".'),
+      limit: z.number().optional().describe('Maximum number of historical records to return (defaults to 15).'),
+      sessionId: z.string().optional().describe('Optional specific chat session ID.'),
+    }),
+    execute: async ({ query, timeRange, limit, sessionId }) => {
+      if (handlers.queryHistoricalChat) {
+        return await handlers.queryHistoricalChat({ query, timeRange, limit, sessionId });
+      }
+      return {
+        totalFound: 0,
+        messages: [],
+        formattedSummary: 'Historical chat query handler not configured.',
+      };
+    },
+  });
+
   return {
     executeBashTool,
     readFileTool,
@@ -447,6 +522,8 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     planTaskExecutionTool,
     requestHumanApprovalTool,
     searchKnowledgeSopTool,
+    queryModelTradeoffsTool,
+    queryHistoricalChatTool,
   };
 }
 
