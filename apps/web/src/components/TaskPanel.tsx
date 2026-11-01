@@ -237,7 +237,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
 
   return (
     <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2 sm:p-2.5 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden relative">
-      {/* Title Header with Activity Log Trigger on Far Right */}
+      {/* Title Header with Task Count */}
       <div className="flex items-center justify-between pb-1.5 border-b-2 border-[#465047] mb-1.5 shrink-0 gap-2">
         <h2 className="text-xs sm:text-sm font-bold tracking-wider text-[#36B9ED] font-pixel-heading flex items-center gap-1.5 truncate">
           <span>▶</span> TASK DISPATCH &amp; AUTONOMOUS ENGINE
@@ -246,20 +246,6 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
           <span className="text-[10px] font-pixel-mono text-[#869184] bg-[#0D110F] border border-[#465047] px-1.5 py-0.5">
             {tasks.length} TASKS
           </span>
-          {onOpenActivityLog && (
-            <button
-              type="button"
-              onClick={onOpenActivityLog}
-              className="pixel-btn pixel-btn-secondary text-[10px] py-0.5 px-2 flex items-center gap-1.5 cursor-pointer shadow-[2px_2px_0_#000]"
-              title="Open Realtime Activity Log Modal"
-            >
-              <span className="w-1.5 h-1.5 bg-[#79D693] animate-pulse" />
-              <span>REALTIME LOG</span>
-              <span className="text-[9px] bg-[#0D110F] text-[#CCF12B] px-1 py-0.2 border border-[#465047]">
-                {activities.length}
-              </span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -397,32 +383,34 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-pixel-heading text-[#B6BFAE]">DELEGATE:</span>
-            <div className="relative inline-flex items-center">
-              <select
-                value={targetAgent}
-                onChange={(e) => setTargetAgent(e.target.value as AgentId)}
-                className="appearance-none bg-[#121615] border-2 border-[#465047] pl-2 pr-7 py-0.5 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
-              >
-                <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
-                <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER)</option>
-                <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
-                <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION ARCHITECT)</option>
-                <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
-                <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
-              </select>
-              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
-                <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 1L5 5L9 1" strokeLinecap="square" />
-                </svg>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-pixel-heading text-[#B6BFAE] shrink-0">DELEGATE:</span>
+              <div className="relative inline-flex items-center w-full sm:w-auto">
+                <select
+                  value={targetAgent}
+                  onChange={(e) => setTargetAgent(e.target.value as AgentId)}
+                  className="w-full sm:w-auto appearance-none bg-[#121615] border-2 border-[#465047] pl-2 pr-7 py-0.5 text-[10px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
+                >
+                  <option value={AGENT_IDS.LEADER}>ZEN (LEADER - CHIEF OF STAFF)</option>
+                  <option value={AGENT_IDS.ENGINEERING}>IKY (SENIOR ENGINEER)</option>
+                  <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH SPECIALIST)</option>
+                  <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION ARCHITECT)</option>
+                  <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
+                  <option value={AGENT_IDS.MEMORY}>DHEA (KNOWLEDGE &amp; MEMORY)</option>
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 1L5 5L9 1" strokeLinecap="square" />
+                  </svg>
+                </div>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="pixel-btn pixel-btn-primary px-2.5 py-0.5 text-[10px]"
+              className="pixel-btn pixel-btn-primary px-2.5 py-1 sm:py-0.5 text-[10px] w-full sm:w-auto text-center justify-center shrink-0"
             >
               {isSubmitting ? 'DISPATCHING...' : 'EXECUTE DIRECTIVE ▶'}
             </button>
