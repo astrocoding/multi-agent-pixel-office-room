@@ -71,6 +71,33 @@ export interface TaskDecision {
   }[];
 }
 
+export interface TaskApproval {
+  id: string;
+  taskId: string;
+  actionType: string;
+  actionDescription: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  requestedBy: string;
+  approvedBy?: string;
+  decisionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+}
+
+export interface TelegramIdentity {
+  id: string;
+  telegramUserId: number;
+  telegramUsername?: string;
+  role: 'owner' | 'operator' | 'user';
+  mappedActorId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -175,6 +202,7 @@ export interface ChatMessage {
   intent?: string;
   mentionedAgents?: string[];
   metadata?: Record<string, unknown>;
+  attachments?: TaskAttachment[];
 }
 
 export interface BubbleChatPayload {
@@ -195,6 +223,72 @@ export interface ModelRouteMetrics {
   };
   success: boolean;
   timestamp: string;
+}
+
+export interface ModelTradeoffAttributes {
+  speed: 'Ultra Fast' | 'Fast' | 'Balanced' | 'Heavy';
+  cost: 'Cheapest' | 'Economy' | 'Standard' | 'Advanced' | 'High Performance';
+  reasoning: 'Basic' | 'Moderate' | 'Advanced' | 'Deep';
+  contextWindow: string;
+}
+
+export interface ModelCatalogItem {
+  id: string;
+  name: string;
+  version: string;
+  tier: number;
+  costTier: 'cheapest' | 'economy' | 'standard' | 'advanced' | 'high_performance';
+  inputCostPer1M: number;
+  outputCostPer1M: number;
+  description: string;
+  strengths: string[];
+  recommendedFor: string[];
+  tradeoffs: ModelTradeoffAttributes;
+}
+
+export interface ModelOperationRecord {
+  id: string;
+  modelName: string;
+  modelTier: number;
+  costTier: string;
+  operationType:
+    | 'chat'
+    | 'task_planning'
+    | 'task_execution'
+    | 'task_qa'
+    | 'instruct'
+    | 'tool_call'
+    | 'embedding'
+    | 'clarification';
+  source: 'auto_router' | 'manual_override';
+  agentId?: AgentId | 'boss' | 'system';
+  taskId?: string;
+  sessionId?: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  latencyMs: number;
+  costEstimate: number;
+  success: boolean;
+  errorMessage?: string;
+  tradeoffMetrics?: {
+    speedScore?: number;
+    reasoningScore?: number;
+    costEfficiencyScore?: number;
+  };
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ModelPerformanceAnalytics {
+  modelName: string;
+  totalCalls: number;
+  successCalls: number;
+  successRate: number;
+  avgLatencyMs: number;
+  avgTokens: number;
+  totalCostEstimate: number;
+  operationDistribution: Record<string, number>;
 }
 
 export interface ServerToClientEvents {
