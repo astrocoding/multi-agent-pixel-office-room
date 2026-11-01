@@ -193,10 +193,114 @@ export async function initDatabase(): Promise<void> {
         intent VARCHAR(120),
         mentioned_agents JSONB DEFAULT '[]'::jsonb,
         metadata JSONB DEFAULT '{}'::jsonb,
+        attachments JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
+
       CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at ASC);
+
+      -- 9. AI Model Operations & Tradeoff Evaluation History
+      CREATE TABLE IF NOT EXISTS model_operations (
+        id VARCHAR(64) PRIMARY KEY,
+        model_name VARCHAR(120) NOT NULL,
+        model_tier INT DEFAULT 1,
+        cost_tier VARCHAR(32) DEFAULT 'cheapest',
+        operation_type VARCHAR(64) NOT NULL,
+        source VARCHAR(32) DEFAULT 'auto_router',
+        agent_id VARCHAR(64),
+        task_id VARCHAR(64),
+        session_id VARCHAR(64),
+        prompt_tokens INT DEFAULT 0,
+        completion_tokens INT DEFAULT 0,
+        total_tokens INT DEFAULT 0,
+        latency_ms INT DEFAULT 0,
+        cost_estimate REAL DEFAULT 0,
+        success BOOLEAN DEFAULT true,
+        error_message TEXT,
+        tradeoff_metrics JSONB DEFAULT '{}'::jsonb,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_model_ops_model ON model_operations(model_name, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_model_ops_type ON model_operations(operation_type);
+      CREATE INDEX IF NOT EXISTS idx_model_ops_task ON model_operations(task_id);
+      CREATE INDEX IF NOT EXISTS idx_model_ops_created ON model_operations(created_at DESC);
+
+      -- 10. Task Approvals Workflow
+      CREATE TABLE IF NOT EXISTS task_approvals (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        action_type VARCHAR(64) NOT NULL,
+        action_description TEXT NOT NULL,
+        risk_level VARCHAR(32) NOT NULL DEFAULT 'medium',
+        reason TEXT,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        requested_by VARCHAR(64) NOT NULL,
+        approved_by VARCHAR(64),
+        decision_reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        expires_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_approvals_status ON task_approvals(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_task_approvals_task ON task_approvals(task_id);
+
+      -- 11. Telegram Integration Tables
+      CREATE TABLE IF NOT EXISTS telegram_identities (
+        id VARCHAR(64) PRIMARY KEY,
+        telegram_user_id BIGINT UNIQUE NOT NULL,
+        telegram_username VARCHAR(120),
+        role VARCHAR(32) NOT NULL DEFAULT 'user',
+        mapped_actor_id VARCHAR(64) NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_telegram_user_id ON telegram_identities(telegram_user_id);
+
+      CREATE TABLE IF NOT EXISTS telegram_processed_updates (
+        id VARCHAR(128) PRIMARY KEY,
+        update_id BIGINT NOT NULL,
+        chat_id BIGINT,
+        user_id BIGINT,
+        command VARCHAR(64),
+        status VARCHAR(32) NOT NULL DEFAULT 'received',
+        response_summary TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_telegram_updates_status ON telegram_processed_updates(status);
+
+      CREATE TABLE IF NOT EXISTS telegram_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        chat_id BIGINT NOT NULL,
+        user_id BIGINT NOT NULL,
+        active_command VARCHAR(64),
+        session_state VARCHAR(64) NOT NULL DEFAULT 'idle',
+        data JSONB DEFAULT '{}'::jsonb,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_telegram_sessions_expires ON telegram_sessions(expires_at);
+
+      CREATE TABLE IF NOT EXISTS telegram_notification_preferences (
+        chat_id BIGINT PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        notify_task_completed BOOLEAN DEFAULT true,
+        notify_task_failed BOOLEAN DEFAULT true,
+        notify_approval_required BOOLEAN DEFAULT true,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `);
 
     // Seed default chat session if table is empty
