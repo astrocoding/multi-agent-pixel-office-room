@@ -2,9 +2,49 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../stores/useChatStore.js';
 import { useAgentStore } from '../stores/useAgentStore.js';
 import { socket } from '../services/socket.js';
-import { AGENT_CONFIGS, AGENT_IDS, type AgentId } from '@agent-office/shared';
+import { AGENT_CONFIGS, AGENT_IDS, type AgentId, type TaskAttachment } from '@agent-office/shared';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 import { AgentMentionBadge } from './AgentMentionBadge.js';
+
+// Calendar day and relative time series helpers
+function getChatDateSeparator(timestampStr: string): string {
+  const msgDate = new Date(timestampStr);
+  if (isNaN(msgDate.getTime())) return 'UNKNOWN DATE';
+
+  const now = new Date();
+  const msgMidnight = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate()).getTime();
+  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const diffDays = Math.round((nowMidnight - msgMidnight) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return 'TODAY';
+  } else if (diffDays === 1) {
+    return 'YESTERDAY';
+  } else if (diffDays === 2) {
+    return '2 DAYS AGO';
+  } else if (diffDays === 3) {
+    return '3 DAYS AGO';
+  } else {
+    return msgDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+}
+
+function isDifferentCalendarDay(t1: string, t2?: string): boolean {
+  if (!t2) return true;
+  const d1 = new Date(t1);
+  const d2 = new Date(t2);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return false;
+  return (
+    d1.getFullYear() !== d2.getFullYear() ||
+    d1.getMonth() !== d2.getMonth() ||
+    d1.getDate() !== d2.getDate()
+  );
+}
 
 export const GlobalChatPanel: React.FC = () => {
   const {
@@ -28,9 +68,12 @@ export const GlobalChatPanel: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasUserSentNewMessageRef = useRef<boolean>(false);
   const initialScrollDoneRef = useRef<boolean>(false);
 
@@ -119,9 +162,121 @@ export const GlobalChatPanel: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim()) return;
+  const adjustTextareaHeight = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 136; // Capped at exactly ~6 lines
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${Math.max(36, nextHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [text]);
+
+  useEffect(() => {
+    const handleResize = () => adjustTextareaHeight();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.md', '.markdown', '.pdf'];
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setFileError(null);
+    const newAttachments: TaskAttachment[] = [];
+    const rejectedFiles: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileName = file.name;
+      const ext = (fileName.includes('.') ? `.${fileName.split('.').pop()}` : '').toLowerCase();
+
+      // Enforce allowed extensions: png, jpg, jpeg, webp, md, markdown, pdf
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        rejectedFiles.push(fileName);
+        continue;
+      }
+
+      const mimeType = file.type || (ext === '.pdf' ? 'application/pdf' : ext === '.md' ? 'text/markdown' : 'image/png');
+      const isImage = mimeType.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
+      const isPdf = ext === '.pdf' || mimeType === 'application/pdf';
+      const attType: 'image' | 'code' | 'document' | 'other' = isImage ? 'image' : isPdf ? 'document' : 'document';
+      const id = 'att-' + Math.random().toString(36).substring(2, 9);
+
+      const readPromise = new Promise<TaskAttachment>((resolve) => {
+        const reader = new FileReader();
+        if (isImage || isPdf) {
+          reader.onload = () => {
+            const res = reader.result as string;
+            const base64Data = res.split(',')[1] || '';
+            resolve({
+              id,
+              name: fileName,
+              type: attType,
+              mimeType,
+              base64Data,
+              size: file.size,
+            });
+          };
+          reader.readAsDataURL(file);
+        } else {
+          // Markdown / text files
+          reader.onload = () => {
+            const text = reader.result as string;
+            resolve({
+              id,
+              name: fileName,
+              type: attType,
+              mimeType,
+              content: text,
+              size: file.size,
+            });
+          };
+          reader.readAsText(file);
+        }
+      });
+
+      const att = await readPromise;
+      newAttachments.push(att);
+    }
+
+    if (rejectedFiles.length > 0) {
+      setFileError(
+        `File ditolak: ${rejectedFiles.join(', ')}. Hanya file PNG, JPG, WEBP, MD, dan PDF yang diperbolehkan!`
+      );
+      setTimeout(() => setFileError(null), 5000);
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...newAttachments]);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Send message on Enter without Shift, allow Shift+Enter for newline
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(e);
+    }
+  };
+
+  const handleSend = (e?: React.FormEvent | React.KeyboardEvent) => {
+    if (e) e.preventDefault();
+    if (!text.trim() && attachments.length === 0) return;
 
     const isInstruct = Boolean(selectedAgentId);
     const targetAgent = selectedAgentId || recipient;
@@ -133,6 +288,7 @@ export const GlobalChatPanel: React.FC = () => {
       text: text.trim(),
       recipientAgentId: targetAgent,
       sessionId: activeSessionId || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
       type: isInstruct ? 'instruct' : 'dialogue',
       metadata: isInstruct
         ? {
@@ -145,6 +301,12 @@ export const GlobalChatPanel: React.FC = () => {
     });
 
     setText('');
+    setAttachments([]);
+    setFileError(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = '36px';
+      inputRef.current.style.overflowY = 'hidden';
+    }
   };
 
   const handleNewChat = async () => {
@@ -173,8 +335,8 @@ export const GlobalChatPanel: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-[#121615] border-2 border-[#465047] p-2.5 sm:p-3 font-pixel-body text-xs text-[#F0F1DD] shadow-[2px_2px_0_#000000] min-h-0 overflow-hidden relative">
       {/* Header Bar with Chat Session Info & Thread Controls */}
-      <div className="flex items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b-2 border-[#465047] mb-2 shrink-0 gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
           <h2 className="text-xs font-bold tracking-wider text-[#CCF12B] font-pixel-heading shrink-0 flex items-center gap-1.5">
             <span>▶</span> OFFICE CHAT
           </h2>
@@ -233,12 +395,12 @@ export const GlobalChatPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Controls: History Drawer Toggle & New Chat Button */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Action Controls: History Drawer Toggle & New Chat Button (Stacked underneath title on mobile) */}
+        <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto justify-end sm:justify-start pt-1.5 sm:pt-0 border-t sm:border-t-0 border-[#465047]/40">
           <button
             type="button"
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-            className={`pixel-btn text-[10px] py-0.5 px-2 ${
+            className={`pixel-btn text-[10px] py-0.5 px-2 flex-1 sm:flex-none text-center justify-center ${
               isHistoryOpen
                 ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
                 : 'pixel-btn-ghost'
@@ -251,7 +413,7 @@ export const GlobalChatPanel: React.FC = () => {
           <button
             type="button"
             onClick={handleNewChat}
-            className="pixel-btn pixel-btn-primary text-[10px] py-0.5 px-2"
+            className="pixel-btn pixel-btn-primary text-[10px] py-0.5 px-2 flex-1 sm:flex-none text-center justify-center"
             title="Create a new clean chat thread (isolated context)"
           >
             + NEW CHAT
@@ -350,58 +512,99 @@ export const GlobalChatPanel: React.FC = () => {
             &gt; Session initialized. Enter directive or mention @Zen to orchestrate.
           </div>
         ) : (
-          messages.map((m) => {
+          messages.map((m, idx) => {
+            const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
+            const showDateDivider = isDifferentCalendarDay(m.timestamp, prevMsg?.timestamp);
+            const dateLabel = showDateDivider ? getChatDateSeparator(m.timestamp) : '';
             const isInstruct = m.type === 'instruct';
+
             return (
-              <div
-                key={m.id}
-                data-sender={m.sender}
-                data-message-id={m.id}
-                className={`p-2.5 border-2 select-text transition-colors ${
-                  isInstruct
-                    ? 'border-[#CCF12B] bg-[#161D19] shadow-[3px_3px_0_#000000]'
-                    : m.sender === 'boss'
-                    ? 'bg-[#1B211D] border-[#899584] ml-4 shadow-[2px_2px_0_#000000]'
-                    : 'bg-[#0D110F] border-[#465047] mr-4 shadow-[2px_2px_0_#000000]'
-                }`}
-              >
-                {/* Direct Character Instruct Tag */}
-                {isInstruct && (
-                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#121615] border border-[#CCF12B] text-[#CCF12B] text-[9.5px] font-pixel-heading font-bold uppercase tracking-wider mb-1.5 shadow-[1px_1px_0_#000]">
-                    <span>▶ DIRECT CHARACTER INSTRUCT</span>
-                    {m.metadata?.deskX !== undefined && m.metadata?.deskY !== undefined && (
-                      <>
-                        <span className="text-[#465047]">•</span>
-                        <span className="text-[#F0F1DD] font-pixel-mono">
-                          WORK DESK: X: {String(m.metadata.deskX)}, Y: {String(m.metadata.deskY)}
-                        </span>
-                      </>
-                    )}
+              <React.Fragment key={m.id || idx}>
+                {/* Historical Date Divider */}
+                {showDateDivider && (
+                  <div className="flex items-center justify-center my-2.5 select-none">
+                    <div className="h-[1px] bg-[#465047]/60 flex-1"></div>
+                    <span className="mx-2 px-2 py-0.5 bg-[#0D110F] border border-[#465047] text-[9px] font-pixel-heading font-bold text-[#869184] uppercase tracking-wider shadow-[1px_1px_0_#000]">
+                      ◆ {dateLabel} ◆
+                    </span>
+                    <div className="h-[1px] bg-[#465047]/60 flex-1"></div>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#465047]/60 select-none">
-                  <span className={`text-[11px] ${getSenderColor(m.sender)}`}>
-                    {m.senderName.toUpperCase()}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-pixel-mono text-[#869184]">
-                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div
+                  data-sender={m.sender}
+                  data-message-id={m.id}
+                  className={`p-2.5 border-2 select-text transition-colors ${
+                    isInstruct
+                      ? 'border-[#CCF12B] bg-[#161D19] shadow-[3px_3px_0_#000000]'
+                      : m.sender === 'boss'
+                      ? 'bg-[#1B211D] border-[#899584] ml-2 sm:ml-4 shadow-[2px_2px_0_#000000]'
+                      : 'bg-[#0D110F] border-[#465047] mr-2 sm:mr-4 shadow-[2px_2px_0_#000000]'
+                  }`}
+                >
+                  {/* Direct Character Instruct Tag */}
+                  {isInstruct && (
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#121615] border border-[#CCF12B] text-[#CCF12B] text-[9.5px] font-pixel-heading font-bold uppercase tracking-wider mb-1.5 shadow-[1px_1px_0_#000]">
+                      <span>▶ DIRECT CHARACTER INSTRUCT</span>
+                      {m.metadata?.deskX !== undefined && m.metadata?.deskY !== undefined && (
+                        <>
+                          <span className="text-[#465047]">•</span>
+                          <span className="text-[#F0F1DD] font-pixel-mono">
+                            WORK DESK: X: {String(m.metadata.deskX)}, Y: {String(m.metadata.deskY)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#465047]/60 select-none">
+                    <span className={`text-[11px] ${getSenderColor(m.sender)}`}>
+                      {m.senderName.toUpperCase()}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyMessage(m.id, m.text)}
-                      title="Copy full message text"
-                      className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-1.5 py-0.2 transition-colors cursor-pointer select-none"
-                    >
-                      {copiedId === m.id ? 'COPIED' : 'COPY'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-pixel-mono text-[#869184]">
+                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyMessage(m.id, m.text)}
+                        title="Copy full message text"
+                        className="text-[9px] font-pixel-heading text-[#B6BFAE] hover:text-[#090B0A] hover:bg-[#CCF12B] border border-[#465047] px-1.5 py-0.2 transition-colors cursor-pointer select-none"
+                      >
+                        {copiedId === m.id ? 'COPIED' : 'COPY'}
+                      </button>
+                    </div>
                   </div>
+                  <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13.5px] leading-relaxed">
+                    <MarkdownRenderer content={m.text} />
+                  </div>
+
+                  {/* Attached Files in Message */}
+                  {m.attachments && m.attachments.length > 0 && (
+                    <div className="mt-2 pt-1.5 border-t border-[#465047]/60 flex flex-wrap gap-1.5">
+                      {m.attachments.map((att, aIdx) => {
+                        const isImg = att.type === 'image' || att.mimeType?.startsWith('image/');
+                        const isPdf = att.name.toLowerCase().endsWith('.pdf') || att.mimeType === 'application/pdf';
+                        const isMd = att.name.toLowerCase().endsWith('.md') || att.name.toLowerCase().endsWith('.markdown');
+
+                        return (
+                          <div
+                            key={aIdx}
+                            className="inline-flex items-center gap-1.5 bg-[#0D110F] border border-[#465047] px-2 py-0.5 text-[9.5px] font-pixel-mono text-[#F0F1DD]"
+                          >
+                            <span className="text-[#36B9ED] font-bold font-pixel-heading">
+                              {isImg ? '[IMG]' : isPdf ? '[PDF]' : isMd ? '[MD]' : '[DOC]'}
+                            </span>
+                            <span className="max-w-[120px] truncate" title={att.name}>
+                              {att.name}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="mt-1 select-text cursor-text text-[#F0F1DD] font-pixel-body text-[13.5px] leading-relaxed">
-                  <MarkdownRenderer content={m.text} />
-                </div>
-              </div>
+              </React.Fragment>
             );
           })
         )}
@@ -470,56 +673,125 @@ export const GlobalChatPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Input Form with Perfectly Spaced Retro Select Dropdown */}
-      <form onSubmit={handleSend} className="mt-2 pt-2 border-t-2 border-[#465047] flex gap-2 shrink-0">
-        <div className="relative inline-flex items-center shrink-0">
-          <select
-            value={selectedAgentId || recipient}
-            onChange={(e) => {
-              const nextAgent = e.target.value as AgentId;
-              setRecipient(nextAgent);
-              if (selectedAgentId) {
-                setSelectedAgentId(nextAgent);
-              }
-            }}
-            className="appearance-none bg-[#0D110F] border-2 border-[#465047] pl-2.5 pr-8 py-1 text-[11px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer"
-          >
-            <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
-            <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
-            <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
-            <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
-            <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
-            <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
-          </select>
-          {/* Custom retro chevron arrow with comfortable 12px right padding from border */}
-          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
-            <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M1 1L5 5L9 1" strokeLinecap="square" />
-            </svg>
+      {/* Input Form with Auto-expanding Textarea, Attachments, and Responsive Layout */}
+      <form onSubmit={handleSend} className="mt-2 pt-2 border-t-2 border-[#465047] flex flex-col gap-1.5 shrink-0">
+        {/* Error notification for rejected file formats */}
+        {fileError && (
+          <div className="bg-[#1B211D] border border-[#F16E5E] text-[#F16E5E] text-[10px] font-pixel-mono p-1 px-2 select-none">
+            ! {fileError}
+          </div>
+        )}
+
+        {/* Top Control Bar: Attachment Trigger + Attached Chips + Agent Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            {/* Attachment Button (Positioned to the left of Agent Selector) */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="pixel-btn pixel-btn-ghost text-[9px] py-0.5 px-2 shrink-0 flex items-center gap-1"
+              title="Attach files (PNG, JPG, WEBP, MD, PDF)"
+            >
+              <span>+ ATTACH FILES</span>
+              {attachments.length > 0 && (
+                <span className="text-[#CCF12B] font-bold">({attachments.length})</span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".png,.jpg,.jpeg,.webp,.md,.markdown,.pdf,image/png,image/jpeg,image/webp,application/pdf,text/markdown"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {/* Attached File Badges with Remove Trigger */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1 max-h-8 overflow-y-auto custom-scrollbar">
+                {attachments.map((att, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 bg-[#1B211D] text-[#F0F1DD] border border-[#465047] px-1.5 py-0.2 text-[9.5px] font-pixel-mono"
+                  >
+                    <span className="max-w-[90px] truncate" title={att.name}>
+                      {att.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(idx)}
+                      className="text-[#869184] hover:text-[#F16E5E] font-bold font-pixel-heading cursor-pointer ml-0.5"
+                      title="Remove attachment"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Agent Selector Dropdown (No 'TARGET AGENT:' text label) */}
+            <div className="relative inline-flex items-center shrink-0">
+              <select
+                value={selectedAgentId || recipient}
+                onChange={(e) => {
+                  const nextAgent = e.target.value as AgentId;
+                  setRecipient(nextAgent);
+                  if (selectedAgentId) {
+                    setSelectedAgentId(nextAgent);
+                  }
+                }}
+                className="appearance-none bg-[#0D110F] border-2 border-[#465047] pl-2.5 pr-7 py-0.5 text-[10.5px] font-pixel-heading font-bold text-[#36B9ED] focus:outline-none focus:border-[#CCF12B] cursor-pointer hover:border-[#869184] transition-colors"
+              >
+                <option value={AGENT_IDS.LEADER}>ZEN (LEADER)</option>
+                <option value={AGENT_IDS.RESEARCH}>DRE (RESEARCH)</option>
+                <option value={AGENT_IDS.ENGINEERING}>IKY (ENGINEER)</option>
+                <option value={AGENT_IDS.AUTOMATION}>GUS (AUTOMATION)</option>
+                <option value={AGENT_IDS.QA}>RAI (QA &amp; CRITIC)</option>
+                <option value={AGENT_IDS.MEMORY}>DHEA (MEMORY)</option>
+              </select>
+              {/* Custom retro chevron arrow */}
+              <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#36B9ED] flex items-center justify-center">
+                <svg className="w-2.5 h-2.5" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 1L5 5L9 1" strokeLinecap="square" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[9px] font-pixel-mono text-[#869184] hidden sm:block shrink-0">
+            {selectedAgentId ? 'DIRECT INSTRUCT MODE' : 'ENTER: SEND • SHIFT+ENTER: NEWLINE'}
           </div>
         </div>
 
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={
-            selectedAgentCfg
-              ? `Instruct ${selectedAgentCfg.name.split(' ')[0]} directly (Work Desk: X: ${selectedAgentCfg.deskX}, Y: ${selectedAgentCfg.deskY})...`
-              : 'Speak to agent or mention @Zen, @Iky, @Dre, @Gus...'
-          }
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className={`flex-1 bg-[#0D110F] border-2 px-2.5 py-1 text-xs text-[#F0F1DD] font-pixel-body placeholder-[#869184] focus:outline-none shadow-inner ${
-            selectedAgentId ? 'border-[#CCF12B] focus:border-[#CCF12B]' : 'border-[#465047] focus:border-[#CCF12B]'
-          }`}
-        />
+        {/* Text Input Row: Full width auto-expanding Textarea + Mobile-Responsive Send button below on mobile */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 w-full">
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              adjustTextareaHeight();
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedAgentCfg
+                ? `Instruct ${selectedAgentCfg.name.split(' ')[0]} directly (Work Desk: X: ${selectedAgentCfg.deskX}, Y: ${selectedAgentCfg.deskY})...`
+                : 'Speak to agent or mention @Zen, @Iky, @Dre, @Gus...'
+            }
+            className={`flex-1 min-h-[36px] max-h-[136px] bg-[#0D110F] border-2 px-2.5 py-1.5 text-xs text-[#F0F1DD] font-pixel-body leading-5 placeholder-[#869184] focus:outline-none shadow-inner resize-none custom-scrollbar ${
+              selectedAgentId ? 'border-[#CCF12B] focus:border-[#CCF12B]' : 'border-[#465047] focus:border-[#CCF12B]'
+            }`}
+          />
 
-        <button
-          type="submit"
-          className="pixel-btn pixel-btn-primary px-3 py-1 text-[11px]"
-        >
-          {selectedAgentId ? 'INSTRUCT ▶' : 'SEND ▶'}
-        </button>
+          <button
+            type="submit"
+            className="pixel-btn pixel-btn-primary px-3 h-9 text-[11px] shrink-0 w-full sm:w-auto self-stretch sm:self-end flex items-center justify-center font-bold"
+          >
+            {selectedAgentId ? 'INSTRUCT ▶' : 'SEND ▶'}
+          </button>
+        </div>
       </form>
     </div>
   );
