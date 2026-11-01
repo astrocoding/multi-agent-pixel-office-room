@@ -1,5 +1,20 @@
 import { dbPool } from './connection.js';
-import type { AgentId, AgentRuntimeState, ChatMessage, ChatSession, MemoryRecord, MemoryType, Task, TaskActivity, TaskStateType } from '@agent-office/shared';
+import { QuerySafety } from '../security/querySafety.js';
+import type {
+  AgentId,
+  AgentRuntimeState,
+  ChatMessage,
+  ChatSession,
+  MemoryRecord,
+  MemoryType,
+  ModelOperationRecord,
+  ModelPerformanceAnalytics,
+  Task,
+  TaskActivity,
+  TaskApproval,
+  TaskStateType,
+  TelegramIdentity,
+} from '@agent-office/shared';
 
 export class DbQueries {
   // Tasks
@@ -501,15 +516,20 @@ export class DbQueries {
     intent?: string;
     mentionedAgents?: string[];
     metadata?: Record<string, unknown>;
+    attachments?: import('@agent-office/shared').TaskAttachment[];
   }): Promise<ChatMessage> {
     const client = await dbPool.connect();
     try {
       await client.query('BEGIN');
 
+      const cleanText = msg.sender !== 'boss'
+        ? QuerySafety.sanitizeBrandIdentity(msg.text)
+        : msg.text;
+
       const res = await client.query(
         `
-        INSERT INTO chat_messages (id, session_id, sender, sender_name, text, type, intent, mentioned_agents, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO chat_messages (id, session_id, sender, sender_name, text, type, intent, mentioned_agents, metadata, attachments)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *;
       `,
         [
@@ -517,11 +537,12 @@ export class DbQueries {
           msg.sessionId,
           msg.sender,
           msg.senderName,
-          msg.text,
+          cleanText,
           msg.type || 'dialogue',
           msg.intent || null,
           msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : '[]',
           msg.metadata ? JSON.stringify(msg.metadata) : '{}',
+          msg.attachments ? JSON.stringify(msg.attachments) : '[]',
         ]
       );
 
@@ -544,6 +565,96 @@ export class DbQueries {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Queries historical chat time-series messages across sessions or within a session
+   * with time range filter, keyword search, and relative date calculation.
+   */
+  public static async queryHistoricalChat(options: {
+    sessionId?: string;
+    query?: string;
+    timeRange?: 'today' | 'yesterday' | 'two_days_ago' | 'three_days_ago' | 'this_week' | 'all';
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+  }): Promise<Array<ChatMessage & { relativeDate: string }>> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (options.sessionId) {
+      params.push(options.sessionId);
+      conditions.push(`session_id = $${params.length}`);
+    }
+
+    if (options.query && options.query.trim()) {
+      params.push(`%${options.query.trim()}%`);
+      conditions.push(`(text ILIKE $${params.length} OR sender_name ILIKE $${params.length})`);
+    }
+
+    if (options.timeRange) {
+      if (options.timeRange === 'today') {
+        conditions.push(`created_at >= CURRENT_DATE`);
+      } else if (options.timeRange === 'yesterday') {
+        conditions.push(`created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE`);
+      } else if (options.timeRange === 'two_days_ago') {
+        conditions.push(`created_at >= CURRENT_DATE - INTERVAL '2 days' AND created_at < CURRENT_DATE - INTERVAL '1 day'`);
+      } else if (options.timeRange === 'three_days_ago') {
+        conditions.push(`created_at >= CURRENT_DATE - INTERVAL '3 days' AND created_at < CURRENT_DATE - INTERVAL '2 days'`);
+      } else if (options.timeRange === 'this_week') {
+        conditions.push(`created_at >= CURRENT_DATE - INTERVAL '7 days'`);
+      }
+    }
+
+    if (options.startDate) {
+      params.push(options.startDate);
+      conditions.push(`created_at >= $${params.length}`);
+    }
+
+    if (options.endDate) {
+      params.push(options.endDate);
+      conditions.push(`created_at <= $${params.length}`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit || 50;
+    params.push(limit);
+
+    const query = `
+      SELECT * FROM chat_messages
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${params.length};
+    `;
+
+    const res = await dbPool.query(query, params);
+    const now = new Date();
+    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return res.rows.map((r) => {
+      const mapped = this.mapChatMessage(r);
+      const msgDate = new Date(mapped.timestamp);
+      const msgMidnight = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate()).getTime();
+      const diffDays = Math.round((nowMidnight - msgMidnight) / (1000 * 60 * 60 * 24));
+
+      let relativeDate = 'TODAY';
+      if (diffDays === 1) relativeDate = 'YESTERDAY';
+      else if (diffDays === 2) relativeDate = '2 DAYS AGO';
+      else if (diffDays === 3) relativeDate = '3 DAYS AGO';
+      else if (diffDays >= 4) {
+        relativeDate = msgDate.toLocaleDateString('en-US', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+      }
+
+      return {
+        ...mapped,
+        relativeDate,
+      };
+    });
   }
 
   public static extractChatTitle(prompt: string): string {
@@ -584,17 +695,531 @@ export class DbQueries {
   }
 
   private static mapChatMessage(r: Record<string, unknown>): ChatMessage {
+    const rawSender = r.sender as AgentId | 'boss' | 'system';
+    const rawText = (r.text as string) || '';
+    const text = rawSender !== 'boss'
+      ? QuerySafety.sanitizeBrandIdentity(rawText)
+      : rawText;
+
     return {
       id: r.id as string,
       sessionId: (r.session_id as string) || undefined,
-      sender: r.sender as AgentId | 'boss' | 'system',
+      sender: rawSender,
       senderName: r.sender_name as string,
-      text: r.text as string,
+      text,
       timestamp: (r.created_at as Date).toISOString(),
       type: (r.type as 'dialogue' | 'status' | 'announcement' | 'instruct') || 'dialogue',
       intent: (r.intent as string) || undefined,
       mentionedAgents: (r.mentioned_agents as string[]) || [],
       metadata: (r.metadata as Record<string, unknown>) || {},
+      attachments: (r.attachments as import('@agent-office/shared').TaskAttachment[]) || [],
+    };
+  }
+
+  // Model Operations & Tradeoff Evaluation History
+  public static async recordModelOperation(op: {
+    id?: string;
+    modelName: string;
+    modelTier?: number;
+    costTier?: string;
+    operationType: string;
+    source?: 'auto_router' | 'manual_override';
+    agentId?: string;
+    taskId?: string;
+    sessionId?: string;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    latencyMs?: number;
+    costEstimate?: number;
+    success?: boolean;
+    errorMessage?: string;
+    tradeoffMetrics?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }): Promise<ModelOperationRecord> {
+    const id = op.id || `mop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const res = await dbPool.query(
+      `
+      INSERT INTO model_operations (
+        id, model_name, model_tier, cost_tier, operation_type, source,
+        agent_id, task_id, session_id, prompt_tokens, completion_tokens,
+        total_tokens, latency_ms, cost_estimate, success, error_message,
+        tradeoff_metrics, metadata, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      RETURNING *;
+      `,
+      [
+        id,
+        op.modelName,
+        op.modelTier || 1,
+        op.costTier || 'cheapest',
+        op.operationType,
+        op.source || 'auto_router',
+        op.agentId || null,
+        op.taskId || null,
+        op.sessionId || null,
+        op.promptTokens || 0,
+        op.completionTokens || 0,
+        op.totalTokens || 0,
+        op.latencyMs || 0,
+        op.costEstimate || 0,
+        op.success !== false,
+        op.errorMessage || null,
+        JSON.stringify(op.tradeoffMetrics || {}),
+        JSON.stringify(op.metadata || {}),
+      ]
+    );
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      modelName: r.model_name,
+      modelTier: r.model_tier,
+      costTier: r.cost_tier,
+      operationType: r.operation_type,
+      source: r.source,
+      agentId: r.agent_id,
+      taskId: r.task_id,
+      sessionId: r.session_id,
+      promptTokens: r.prompt_tokens,
+      completionTokens: r.completion_tokens,
+      totalTokens: r.total_tokens,
+      latencyMs: r.latency_ms,
+      costEstimate: parseFloat(r.cost_estimate || 0),
+      success: r.success,
+      errorMessage: r.error_message || undefined,
+      tradeoffMetrics: r.tradeoff_metrics || {},
+      metadata: r.metadata || {},
+      createdAt: (r.created_at as Date).toISOString(),
+    };
+  }
+
+  public static async getModelOperations(
+    limit = 50,
+    modelName?: string,
+    operationType?: string
+  ): Promise<ModelOperationRecord[]> {
+    let query = 'SELECT * FROM model_operations';
+    const params: unknown[] = [];
+    const conditions: string[] = [];
+
+    if (modelName) {
+      params.push(modelName);
+      conditions.push(`model_name = $${params.length}`);
+    }
+    if (operationType) {
+      params.push(operationType);
+      conditions.push(`operation_type = $${params.length}`);
+    }
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    params.push(limit);
+    query += ` ORDER BY created_at DESC LIMIT $${params.length};`;
+
+    const res = await dbPool.query(query, params);
+    return res.rows.map((r) => ({
+      id: r.id,
+      modelName: r.model_name,
+      modelTier: r.model_tier,
+      costTier: r.cost_tier,
+      operationType: r.operation_type,
+      source: r.source,
+      agentId: r.agent_id,
+      taskId: r.task_id,
+      sessionId: r.session_id,
+      promptTokens: r.prompt_tokens,
+      completionTokens: r.completion_tokens,
+      totalTokens: r.total_tokens,
+      latencyMs: r.latency_ms,
+      costEstimate: parseFloat(r.cost_estimate || 0),
+      success: r.success,
+      errorMessage: r.error_message || undefined,
+      tradeoffMetrics: r.tradeoff_metrics || {},
+      metadata: r.metadata || {},
+      createdAt: (r.created_at as Date).toISOString(),
+    }));
+  }
+
+  public static async getModelTradeoffAnalytics(): Promise<Record<string, ModelPerformanceAnalytics>> {
+    const res = await dbPool.query(`
+      SELECT
+        model_name,
+        COUNT(*)::int as total_calls,
+        COUNT(*) FILTER (WHERE success = true)::int as success_calls,
+        ROUND(AVG(latency_ms))::int as avg_latency,
+        ROUND(AVG(total_tokens))::int as avg_tokens,
+        COALESCE(SUM(cost_estimate), 0)::float as total_cost
+      FROM model_operations
+      GROUP BY model_name;
+    `);
+
+    const result: Record<string, ModelPerformanceAnalytics> = {};
+    for (const row of res.rows) {
+      const total = parseInt(row.total_calls, 10);
+      const success = parseInt(row.success_calls, 10);
+      result[row.model_name] = {
+        modelName: row.model_name,
+        totalCalls: total,
+        successCalls: success,
+        successRate: total > 0 ? Math.round((success / total) * 100) : 100,
+        avgLatencyMs: parseInt(row.avg_latency || '0', 10),
+        avgTokens: parseInt(row.avg_tokens || '0', 10),
+        totalCostEstimate: parseFloat(row.total_cost || '0'),
+        operationDistribution: {},
+      };
+    }
+    return result;
+  }
+
+  // ============================================================================
+  // Task Approvals Workflow
+  // ============================================================================
+
+  public static async createApproval(data: Omit<TaskApproval, 'createdAt' | 'updatedAt'>): Promise<TaskApproval> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO task_approvals (
+        id, task_id, action_type, action_description, risk_level,
+        reason, status, requested_by, approved_by, decision_reason, expires_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *;
+    `,
+      [
+        data.id,
+        data.taskId,
+        data.actionType,
+        data.actionDescription,
+        data.riskLevel || 'medium',
+        data.reason || null,
+        data.status || 'pending',
+        data.requestedBy,
+        data.approvedBy || null,
+        data.decisionReason || null,
+        data.expiresAt ? new Date(data.expiresAt) : new Date(Date.now() + 24 * 3600 * 1000), // Default 24h expiration
+      ]
+    );
+
+    return this.mapApproval(res.rows[0]);
+  }
+
+  public static async getPendingApprovals(limit = 20): Promise<TaskApproval[]> {
+    const res = await dbPool.query(
+      `
+      SELECT * FROM task_approvals
+      WHERE status = 'pending' AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY created_at DESC
+      LIMIT $1;
+    `,
+      [limit]
+    );
+    return res.rows.map(this.mapApproval);
+  }
+
+  public static async getApprovalById(id: string): Promise<TaskApproval | null> {
+    const res = await dbPool.query(
+      `
+      SELECT * FROM task_approvals
+      WHERE id = $1;
+    `,
+      [id]
+    );
+    if (res.rows.length === 0) return null;
+    return this.mapApproval(res.rows[0]);
+  }
+
+  public static async updateApprovalStatus(
+    id: string,
+    status: 'approved' | 'rejected',
+    actorId: string,
+    decisionReason?: string
+  ): Promise<TaskApproval | null> {
+    const client = await dbPool.connect();
+    try {
+      await client.query('BEGIN');
+      const checkRes = await client.query(
+        `SELECT * FROM task_approvals WHERE id = $1 FOR UPDATE;`,
+        [id]
+      );
+      if (checkRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      const existing = checkRes.rows[0];
+      if (existing.status !== 'pending') {
+        await client.query('ROLLBACK');
+        return null; // Already transitioned (idempotent / non-replayed)
+      }
+
+      const updateRes = await client.query(
+        `
+        UPDATE task_approvals
+        SET status = $2, approved_by = $3, decision_reason = $4, updated_at = NOW()
+        WHERE id = $1
+        RETURNING *;
+      `,
+        [id, status, actorId, decisionReason || null]
+      );
+
+      // Also update linked task status if needed
+      const taskId = existing.task_id;
+      if (status === 'approved') {
+        await client.query(
+          `UPDATE tasks SET status = 'in_progress', updated_at = NOW() WHERE id = $1 AND status = 'waiting_approval';`,
+          [taskId]
+        );
+      } else if (status === 'rejected') {
+        await client.query(
+          `UPDATE tasks SET status = 'failed', updated_at = NOW() WHERE id = $1 AND status = 'waiting_approval';`,
+          [taskId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return this.mapApproval(updateRes.rows[0]);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public static async cancelTask(taskId: string, reason = 'Cancelled by Boss via Telegram'): Promise<Task | null> {
+    const task = await this.getTaskById(taskId);
+    if (!task) return null;
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+      return task; // Terminal state, cannot cancel again
+    }
+
+    const updated = await this.updateTaskStatus(taskId, 'cancelled', {
+      cancellationReason: reason,
+      cancelledAt: new Date().toISOString(),
+    });
+
+    await this.recordActivity({
+      id: `act_${Date.now()}`,
+      taskId,
+      agentId: 'system',
+      eventType: 'TASK_FAILED',
+      message: `Task cancelled: ${reason}`,
+      metadata: { reason },
+    });
+
+    return updated;
+  }
+
+  // ============================================================================
+  // Telegram Integration Queries
+  // ============================================================================
+
+  public static async getTelegramIdentity(telegramUserId: number): Promise<TelegramIdentity | null> {
+    const res = await dbPool.query(
+      `SELECT * FROM telegram_identities WHERE telegram_user_id = $1 AND is_active = true;`,
+      [telegramUserId]
+    );
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      telegramUserId: Number(r.telegram_user_id),
+      telegramUsername: r.telegram_username,
+      role: r.role,
+      mappedActorId: r.mapped_actor_id,
+      isActive: r.is_active,
+      createdAt: (r.created_at as Date).toISOString(),
+      updatedAt: (r.updated_at as Date).toISOString(),
+    };
+  }
+
+  public static async upsertTelegramIdentity(data: {
+    telegramUserId: number;
+    telegramUsername?: string;
+    role: 'owner' | 'operator' | 'user';
+    mappedActorId: string;
+  }): Promise<TelegramIdentity> {
+    const id = `tg_id_${data.telegramUserId}`;
+    const res = await dbPool.query(
+      `
+      INSERT INTO telegram_identities (id, telegram_user_id, telegram_username, role, mapped_actor_id, is_active, updated_at)
+      VALUES ($1, $2, $3, $4, $5, true, NOW())
+      ON CONFLICT (telegram_user_id) DO UPDATE SET
+        telegram_username = EXCLUDED.telegram_username,
+        role = EXCLUDED.role,
+        mapped_actor_id = EXCLUDED.mapped_actor_id,
+        is_active = true,
+        updated_at = NOW()
+      RETURNING *;
+    `,
+      [id, data.telegramUserId, data.telegramUsername || null, data.role, data.mappedActorId]
+    );
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      telegramUserId: Number(r.telegram_user_id),
+      telegramUsername: r.telegram_username,
+      role: r.role,
+      mappedActorId: r.mapped_actor_id,
+      isActive: r.is_active,
+      createdAt: (r.created_at as Date).toISOString(),
+      updatedAt: (r.updated_at as Date).toISOString(),
+    };
+  }
+
+  public static async isTelegramUpdateProcessed(dedupKey: string): Promise<boolean> {
+    const res = await dbPool.query(
+      `SELECT 1 FROM telegram_processed_updates WHERE id = $1;`,
+      [dedupKey]
+    );
+    return res.rows.length > 0;
+  }
+
+  public static async markTelegramUpdateReceived(
+    dedupKey: string,
+    updateId: number,
+    chatId?: number,
+    userId?: number,
+    command?: string
+  ): Promise<boolean> {
+    try {
+      await dbPool.query(
+        `
+        INSERT INTO telegram_processed_updates (id, update_id, chat_id, user_id, command, status)
+        VALUES ($1, $2, $3, $4, $5, 'received')
+        ON CONFLICT (id) DO NOTHING;
+      `,
+        [dedupKey, updateId, chatId || null, userId || null, command || null]
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  public static async updateTelegramProcessedStatus(
+    dedupKey: string,
+    status: 'completed' | 'failed',
+    responseSummary?: string
+  ): Promise<void> {
+    await dbPool.query(
+      `
+      UPDATE telegram_processed_updates
+      SET status = $2, response_summary = $3, updated_at = NOW()
+      WHERE id = $1;
+    `,
+      [dedupKey, status, responseSummary || null]
+    );
+  }
+
+  public static async getTelegramSession(chatId: number, userId: number): Promise<{
+    activeCommand: string;
+    sessionState: string;
+    data: Record<string, unknown>;
+  } | null> {
+    const id = `${chatId}:${userId}`;
+    const res = await dbPool.query(
+      `SELECT * FROM telegram_sessions WHERE id = $1 AND expires_at > NOW();`,
+      [id]
+    );
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      activeCommand: r.active_command,
+      sessionState: r.session_state,
+      data: r.data || {},
+    };
+  }
+
+  public static async saveTelegramSession(
+    chatId: number,
+    userId: number,
+    activeCommand: string,
+    sessionState: string,
+    data: Record<string, unknown> = {},
+    ttlSeconds = 600
+  ): Promise<void> {
+    const id = `${chatId}:${userId}`;
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    await dbPool.query(
+      `
+      INSERT INTO telegram_sessions (id, chat_id, user_id, active_command, session_state, data, expires_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        active_command = EXCLUDED.active_command,
+        session_state = EXCLUDED.session_state,
+        data = EXCLUDED.data,
+        expires_at = EXCLUDED.expires_at,
+        updated_at = NOW();
+    `,
+      [id, chatId, userId, activeCommand, sessionState, JSON.stringify(data), expiresAt]
+    );
+  }
+
+  public static async clearTelegramSession(chatId: number, userId: number): Promise<void> {
+    const id = `${chatId}:${userId}`;
+    await dbPool.query(`DELETE FROM telegram_sessions WHERE id = $1;`, [id]);
+  }
+
+  public static async getTelegramNotificationPreferences(chatId: number): Promise<{
+    enabled: boolean;
+    notifyTaskCompleted: boolean;
+    notifyTaskFailed: boolean;
+    notifyApprovalRequired: boolean;
+  } | null> {
+    const res = await dbPool.query(
+      `SELECT * FROM telegram_notification_preferences WHERE chat_id = $1;`,
+      [chatId]
+    );
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      enabled: r.enabled,
+      notifyTaskCompleted: r.notify_task_completed,
+      notifyTaskFailed: r.notify_task_failed,
+      notifyApprovalRequired: r.notify_approval_required,
+    };
+  }
+
+  public static async updateTelegramNotificationPreferences(
+    chatId: number,
+    userId: number,
+    enabled: boolean
+  ): Promise<void> {
+    await dbPool.query(
+      `
+      INSERT INTO telegram_notification_preferences (chat_id, user_id, enabled, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (chat_id) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        user_id = EXCLUDED.user_id,
+        updated_at = NOW();
+    `,
+      [chatId, userId, enabled]
+    );
+  }
+
+  public static async getAllSubscribedTelegramChats(): Promise<number[]> {
+    const res = await dbPool.query(
+      `SELECT chat_id FROM telegram_notification_preferences WHERE enabled = true;`
+    );
+    return res.rows.map((r) => Number(r.chat_id));
+  }
+
+  private static mapApproval(row: Record<string, unknown>): TaskApproval {
+    return {
+      id: row.id as string,
+      taskId: row.task_id as string,
+      actionType: row.action_type as string,
+      actionDescription: row.action_description as string,
+      riskLevel: (row.risk_level as TaskApproval['riskLevel']) || 'medium',
+      reason: (row.reason as string) || undefined,
+      status: row.status as TaskApproval['status'],
+      requestedBy: row.requested_by as string,
+      approvedBy: (row.approved_by as string) || undefined,
+      decisionReason: (row.decision_reason as string) || undefined,
+      createdAt: (row.created_at as Date).toISOString(),
+      updatedAt: (row.updated_at as Date).toISOString(),
+      expiresAt: row.expires_at ? (row.expires_at as Date).toISOString() : undefined,
     };
   }
 
