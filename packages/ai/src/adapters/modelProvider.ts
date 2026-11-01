@@ -1,7 +1,7 @@
 import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import type { ModelRouteMetrics } from '@agent-office/shared';
+import type { ModelRouteMetrics, ModelCatalogItem, ModelTradeoffAttributes } from '@agent-office/shared';
 
 export interface ModelRequestOptions {
   systemPrompt?: string;
@@ -9,6 +9,10 @@ export interface ModelRequestOptions {
   maxTokens?: number;
   timeoutMs?: number;
   imageAttachments?: { mimeType: string; base64Data: string }[];
+  operationType?: string;
+  taskId?: string;
+  sessionId?: string;
+  agentId?: string;
 }
 
 export interface ModelResponse {
@@ -35,15 +39,7 @@ export interface IModelProvider {
   isHealthy(): Promise<boolean>;
 }
 
-export interface GeminiModelInfo {
-  id: string;
-  name: string;
-  tier: number;
-  costTier: 'cheapest' | 'economy' | 'standard' | 'advanced' | 'high_performance';
-  inputCostPer1M: number;
-  outputCostPer1M: number;
-  description: string;
-}
+export interface GeminiModelInfo extends ModelCatalogItem {}
 
 /**
  * Gemini models catalog strictly ordered from CHEAPEST to HIGHEST capability.
@@ -54,64 +50,126 @@ export const GEMINI_MODEL_CATALOG: GeminiModelInfo[] = [
   {
     id: 'gemini-3.1-flash-lite',
     name: 'Gemini 3.1 Flash-Lite',
+    version: 'v3.1-lite',
     tier: 1,
     costTier: 'cheapest',
     inputCostPer1M: 0.05,
-    outputCostPer1M: 0.20,
-    description: 'Model seri 3 paling hemat biaya untuk tugas volume tinggi yang sederhana dan membutuhkan latensi rendah.',
+    outputCostPer1M: 0.2,
+    description: 'Model seri 3 paling hemat biaya untuk tugas volume tinggi yang membutuhkan latensi ultra rendah.',
+    strengths: ['Ultra-low latency', 'Lowest token cost', 'High throughput concurrency'],
+    recommendedFor: ['Realtime dialogue stream', 'Status telemetry & notifications', 'Fast tool dispatching'],
+    tradeoffs: {
+      speed: 'Ultra Fast',
+      cost: 'Cheapest',
+      reasoning: 'Basic',
+      contextWindow: '1M tokens',
+    },
   },
   {
     id: 'gemini-3.5-flash-lite',
     name: 'Gemini 3.5 Flash-Lite',
+    version: 'v3.5-lite',
     tier: 2,
     costTier: 'economy',
     inputCostPer1M: 0.075,
-    outputCostPer1M: 0.30,
-    description: 'Varian ringan yang dirancang untuk pemrosesan berskala besar (high-throughput) dengan tetap mempertahankan kemampuan penalaran dasar.',
+    outputCostPer1M: 0.3,
+    description: 'Varian ringan yang dirancang untuk throughput skala besar dengan kemampuan penalaran menengah yang seimbang.',
+    strengths: ['Balanced speed & reasoning', 'Low latency', 'Economical token usage'],
+    recommendedFor: ['Task directive breakdown', 'Workspace file summaries', 'Memory vector synthesis'],
+    tradeoffs: {
+      speed: 'Fast',
+      cost: 'Economy',
+      reasoning: 'Moderate',
+      contextWindow: '1M tokens',
+    },
   },
   {
     id: 'gemini-3-flash-preview',
     name: 'Gemini 3 Flash Preview',
+    version: 'v3.0-preview',
     tier: 3,
     costTier: 'economy',
-    inputCostPer1M: 0.10,
-    outputCostPer1M: 0.40,
-    description: 'Model pratinjau Flash berbiaya lebih rendah untuk pemahaman multimodal.',
+    inputCostPer1M: 0.1,
+    outputCostPer1M: 0.4,
+    description: 'Model pratinjau Flash berbiaya ekonomis dengan pemahaman konteks visual multimodal.',
+    strengths: ['Visual artifact comprehension', 'Fast multimodal processing', 'Cost efficiency'],
+    recommendedFor: ['Multimodal file attachments', 'UI mockup extraction', 'Image inspect prompts'],
+    tradeoffs: {
+      speed: 'Fast',
+      cost: 'Economy',
+      reasoning: 'Moderate',
+      contextWindow: '1M tokens',
+    },
   },
   {
     id: 'gemini-3.6-flash',
     name: 'Gemini 3.6 Flash',
+    version: 'v3.6-stable',
     tier: 4,
     costTier: 'standard',
     inputCostPer1M: 0.15,
-    outputCostPer1M: 0.60,
-    description: 'Model efisien dengan latensi rendah yang tetap dipertahankan untuk sistem produksi yang sudah terkalibrasi.',
+    outputCostPer1M: 0.6,
+    description: 'Model efisien dengan penalaran andal untuk sistem produksi dan alur eksekusi kode terkalibrasi.',
+    strengths: ['Robust code generation', 'Schema compliance', 'Fast execution pipeline'],
+    recommendedFor: ['Backend/frontend code synthesis', 'File edits & refactoring', 'Test script authoring'],
+    tradeoffs: {
+      speed: 'Fast',
+      cost: 'Standard',
+      reasoning: 'Advanced',
+      contextWindow: '1M tokens',
+    },
   },
   {
     id: 'gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro Preview',
+    version: 'v3.1-pro',
     tier: 5,
     costTier: 'advanced',
     inputCostPer1M: 0.25,
-    outputCostPer1M: 1.00,
-    description: 'Model pratinjau yang mengutamakan penalaran mendalam dan alur kerja agentik.',
+    outputCostPer1M: 1.0,
+    description: 'Model penalaran tingkat lanjut untuk alur kerja agentik multi-tahap dan arsitektur sistem kompleks.',
+    strengths: ['Deep contextual reasoning', 'Multi-step agent planning', 'Complex schema deduction'],
+    recommendedFor: ['Chief of Staff task roadmapping', 'System architecture design', 'Root cause debugging'],
+    tradeoffs: {
+      speed: 'Balanced',
+      cost: 'Advanced',
+      reasoning: 'Deep',
+      contextWindow: '2M tokens',
+    },
   },
   {
     id: 'gemini-3.8-flash',
     name: 'Gemini 3.8 Flash',
+    version: 'v3.8-enterprise',
     tier: 6,
     costTier: 'high_performance',
-    inputCostPer1M: 0.30,
-    outputCostPer1M: 1.20,
-    description: 'Model Flash terbaru untuk rekayasa perangkat lunak, agen otonom, dan tugas perusahaan yang kompleks.',
+    inputCostPer1M: 0.3,
+    outputCostPer1M: 1.2,
+    description: 'Model Flash mutakhir untuk rekayasa perangkat lunak otonom, audit QA ketat, dan penanganan instruksi kritis.',
+    strengths: ['High-performance autonomous engineering', 'Rigorous QA validation', 'Complex bash/tool automation'],
+    recommendedFor: ['Autonomous task execution', 'Automated QA & Critic verification', 'Full pipeline delivery'],
+    tradeoffs: {
+      speed: 'Fast',
+      cost: 'High Performance',
+      reasoning: 'Deep',
+      contextWindow: '2M tokens',
+    },
   },
 ];
+
+export function calculateModelCost(modelName: string, promptTokens: number, completionTokens: number): number {
+  const info = GEMINI_MODEL_CATALOG.find((m) => m.id === modelName);
+  const inputRate = info ? info.inputCostPer1M : 0.15;
+  const outputRate = info ? info.outputCostPer1M : 0.6;
+  return Number(((promptTokens * inputRate + completionTokens * outputRate) / 1_000_000).toFixed(6));
+}
 
 export class GeminiProvider implements IModelProvider {
   public readonly id = 'gemini';
   private apiKey: string;
   private candidateModels: string[];
   private activeModelIndex = 0;
+  private isAutoRouterMode = true;
   private static globalUnavailableModels = new Set<string>();
   private failedModels = new Set<string>();
   private chatModelsCache = new Map<string, ChatGoogleGenerativeAI>();
@@ -149,6 +207,18 @@ export class GeminiProvider implements IModelProvider {
     return this.candidateModels[this.activeModelIndex] || 'gemini-3.1-flash-lite';
   }
 
+  public isAutoRouter(): boolean {
+    return this.isAutoRouterMode;
+  }
+
+  public enableAutoRouter(): void {
+    this.isAutoRouterMode = true;
+    this.activeModelIndex = 0;
+    if (this.onModelSwitchedCallback) {
+      this.onModelSwitchedCallback(this.modelName, 'Enabled autonomous auto-router mode (cheapest-first)');
+    }
+  }
+
   public getCandidateModels(): string[] {
     return [...this.candidateModels];
   }
@@ -166,6 +236,7 @@ export class GeminiProvider implements IModelProvider {
   }
 
   public switchModel(targetModel: string): boolean {
+    this.isAutoRouterMode = false;
     const idx = this.candidateModels.indexOf(targetModel);
     if (idx !== -1) {
       this.activeModelIndex = idx;
