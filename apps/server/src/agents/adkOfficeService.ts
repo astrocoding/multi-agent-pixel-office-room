@@ -19,6 +19,7 @@ import type { SocketServerBridge } from '../socket/socketServer.js';
 import type { MemoryService } from '../memory/memoryService.js';
 import { ShellExecutionTool, WorkspaceFsTools, AttachmentAnalyzer } from '../tools/index.js';
 import { DbQueries } from '../db/queries.js';
+import { QuerySafety } from '../security/querySafety.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -29,6 +30,7 @@ export class AdkOfficeService {
   private socketBridge: SocketServerBridge;
   private memoryService?: MemoryService;
   private activeDirectory = '~/Projects';
+  private activeTaskId: string | null = null;
 
   constructor(
     apiKey: string,
@@ -338,9 +340,34 @@ export class AdkOfficeService {
       },
 
       requestHumanApproval: async (params) => {
+        const approvalId = `apr_${Date.now()}`;
+        const taskId = this.activeTaskId || 'task_general';
+
+        try {
+          await DbQueries.createApproval({
+            id: approvalId,
+            taskId,
+            actionType: 'destructive_or_privileged_tool',
+            actionDescription: params.actionDescription,
+            riskLevel: params.riskLevel,
+            reason: params.reason,
+            status: 'pending',
+            requestedBy: AGENT_IDS.LEADER,
+          });
+
+          if (this.activeTaskId) {
+            await DbQueries.updateTaskStatus(this.activeTaskId, 'waiting_approval', {
+              pendingApprovalId: approvalId,
+              actionDescription: params.actionDescription,
+            });
+          }
+        } catch (e) {
+          console.warn('[AdkOfficeService] Could not persist approval record:', e);
+        }
+
         this.socketBridge.broadcastBubble({
           agentId: AGENT_IDS.LEADER,
-          text: `[HITL] Menunggu Persetujuan Bos: ${params.actionDescription.slice(0, 80)}`,
+          text: `[HITL] Menunggu Persetujuan Bos (${approvalId}): ${params.actionDescription.slice(0, 60)}`,
           durationMs: 5000,
           bubbleType: 'alert',
         });
@@ -350,11 +377,12 @@ export class AdkOfficeService {
           sender: AGENT_IDS.LEADER,
           senderName: 'Zen (Leader)',
           text: `**PERINGATAN HUMAN-IN-THE-LOOP**:
+ID Persetujuan: \`${approvalId}\`
 Tindakan berisiko tinggi terdeteksi: **${params.actionDescription}**
 Tingkat Risiko: \`${params.riskLevel.toUpperCase()}\`
 Alasan: ${params.reason}
 
-Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
+Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`,
           timestamp: new Date().toISOString(),
           type: 'announcement',
         });
@@ -362,7 +390,8 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
         return {
           approved: false,
           status: 'waiting_user_input',
-          message: `Human approval requested. Waiting for Boss authorization.`,
+          approvalId,
+          message: `Human approval requested with ID ${approvalId}. Waiting for Boss authorization.`,
         };
       },
 
@@ -385,6 +414,38 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
           sops: filtered,
           formattedSummary:
             formattedSummary || `Tidak ditemukan SOP yang cocok dengan "${query}".`,
+        };
+      },
+
+      queryHistoricalChat: async (params) => {
+        const results = await DbQueries.queryHistoricalChat({
+          sessionId: params.sessionId,
+          query: params.query,
+          timeRange: params.timeRange,
+          limit: params.limit || 15,
+        });
+
+        const formattedSummary = results.length > 0
+          ? results.map((m) => {
+              const attNote = m.attachments && m.attachments.length > 0
+                ? ` [Files: ${m.attachments.map((a) => a.name).join(', ')}]`
+                : '';
+              return `[${m.relativeDate} - ${m.timestamp}] ${m.senderName}: "${m.text}"${attNote}`;
+            }).join('\n')
+          : 'No historical messages found matching the criteria.';
+
+        return {
+          totalFound: results.length,
+          messages: results.map((m) => ({
+            id: m.id,
+            sender: m.sender,
+            senderName: m.senderName,
+            text: m.text,
+            timestamp: m.timestamp,
+            relativeDate: m.relativeDate,
+            attachments: m.attachments?.map((a) => ({ name: a.name, type: a.type })),
+          })),
+          formattedSummary,
         };
       },
     };
@@ -493,12 +554,44 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
     const targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
 
-    // Multimodal attachments if any
+    // 1. Process Multimodal attachments & persist learned knowledge to memory
     let enrichedPrompt = userText;
     if (attachments && attachments.length > 0) {
       const inspections = attachments.map((a) => AttachmentAnalyzer.inspectAttachment(a));
-      enrichedPrompt += `\n[Attachments: ${inspections.map((i) => `${i.name} (${i.fileKind})`).join(', ')}]`;
+      const multimodal = AttachmentAnalyzer.buildMultimodalMessages(userText, inspections);
+      enrichedPrompt = multimodal.textPrompt;
+
+      // Persist knowledge of attached files to semantic memory for multi-agent recall
+      if (this.memoryService) {
+        for (const item of inspections) {
+          if (item.isSafe) {
+            const previewText = item.extractedText ? item.extractedText.slice(0, 3000) : '';
+            await this.memoryService.storeMemory(
+              targetAgentId,
+              'semantic',
+              `Learned from attachment [${item.name}] (${item.fileKind}, ${item.metadata.byteSize} bytes):\n${item.summary}\n${previewText}`,
+              {
+                summary: `Attachment analysis & knowledge: ${item.name}`,
+                importance: 8,
+                metadata: {
+                  attachmentId: item.attachmentId,
+                  fileName: item.name,
+                  fileKind: item.fileKind,
+                  byteSize: item.metadata.byteSize,
+                  sessionId: sessionId || 'default',
+                  timestamp: new Date().toISOString(),
+                },
+              }
+            ).catch((err) => console.warn('[Memory] Failed to store attachment memory:', err));
+          }
+        }
+      }
     }
+
+    // 2. Accurate Time Series Header (Contextual temporal grounding)
+    const now = new Date();
+    const timeHeader = `[TIME SERIES CONTEXT: ${now.toISOString()} | Local: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${now.toLocaleTimeString('en-US')}]`;
+    enrichedPrompt = `${timeHeader}\n\n${enrichedPrompt}`;
 
     // Proactively verify task context from database/Redis if Boss mentions a task ID
     const taskMatch =
@@ -625,9 +718,10 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
       }
     }
 
-    const finalReply =
+    const finalReply = QuerySafety.sanitizeBrandIdentity(
       accumulatedText.trim() ||
-      `Siap Bos! Tugas telah diproses oleh Agent Office Team.`;
+      `Siap Bos! Tugas telah diproses oleh Agent Office Team.`
+    );
 
     const speakingCfg = AGENT_CONFIGS[currentSpeakingAgentId] || cfg;
 
@@ -699,6 +793,7 @@ Mohon konfirmasi atau ketik persetujuan Bos di chat jika ingin melanjutkan.`,
    */
   public async executeTask(task: Task): Promise<Task> {
     const taskId = task.id;
+    this.activeTaskId = taskId;
 
     // 1. Mark task in_progress
     await DbQueries.updateTaskStatus(taskId, 'in_progress');
@@ -718,7 +813,7 @@ Task Description: ${task.description}
 Active Directory: ${this.activeDirectory}
 Attached Files: ${task.attachments?.map((a) => a.name).join(', ') || 'None'}
 
-MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & MULTI-AGENT SWARM:
+MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
 1. DECISION MAKING & WORKLOAD EVALUATION:
    Zen must evaluate task complexity ("trivial", "moderate", "complex", or "mission_critical") and call plan_task_execution to register the plan and strategy.
 2. GUARDRAILS & HUMAN-IN-THE-LOOP:
@@ -758,7 +853,9 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & MULTI-AGENT SWARM:
       }
     }
 
-    const finalOutput = deliverable.trim() || 'Task completed successfully by Agent Office Team.';
+    const finalOutput = QuerySafety.sanitizeBrandIdentity(
+      deliverable.trim() || 'Task completed successfully by Agent Office Team.'
+    );
 
     // Determine the solving agent / team name:
     // If a specific subagent did the work (e.g. Iky, Dre, Gus, Rai, Dhea), name that agent.
@@ -766,10 +863,11 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & MULTI-AGENT SWARM:
     const nonLeaderAgents = Array.from(involvedAgents).filter(
       (name) => !name.includes('Zen') && !name.includes('Leader')
     );
-    const solverName =
+    const solverName = QuerySafety.sanitizeBrandIdentity(
       nonLeaderAgents.length === 1
         ? nonLeaderAgents[0]
-        : (involvedAgents.size === 1 ? Array.from(involvedAgents)[0] : 'Agent Office Team');
+        : (involvedAgents.size === 1 ? Array.from(involvedAgents)[0] : 'Agent Office Team')
+    );
 
     const handoffChain: TaskHandoffRecord[] = [
       {
@@ -849,6 +947,7 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & MULTI-AGENT SWARM:
       type: 'dialogue',
     });
 
+    this.activeTaskId = null;
     return task;
   }
 }
