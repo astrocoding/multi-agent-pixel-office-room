@@ -7,7 +7,7 @@ import crypto from 'crypto';
 
 import { initDatabase } from './db/schema.js';
 import { DbQueries } from './db/queries.js';
-import { GeminiProvider, FallbackProvider, ModelRouter } from '@agent-office/ai';
+import { GeminiProvider, FallbackProvider, ModelRouter, calculateModelCost } from '@agent-office/ai';
 import { MemoryService } from './memory/memoryService.js';
 import { SocketServerBridge } from './socket/socketServer.js';
 import {
@@ -22,6 +22,7 @@ import { ChatAgentService } from './agents/chatAgentService.js';
 import { AdkOfficeService } from './agents/adkOfficeService.js';
 import { OfficeWorkflowOrchestrator } from './graph/workflow.js';
 import { registerRoutes } from './api/routes.js';
+import { registerInternalRoutes } from './api/internalRoutes.js';
 import { AGENT_CONFIGS, AGENT_IDS, ROOM_EVENTS } from '@agent-office/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -108,6 +109,43 @@ async function bootstrap() {
     });
   }
 
+  // Hook automatic model operation logging for agent learning & tradeoff comparison
+  modelRouter.setOnOperationCompleted(async (metrics, context) => {
+    try {
+      const activeModelInfo =
+        primaryProvider instanceof GeminiProvider ? primaryProvider.getActiveModelInfo() : undefined;
+      const costEstimate = calculateModelCost(
+        metrics.modelName,
+        metrics.tokenCount?.prompt || 0,
+        metrics.tokenCount?.completion || 0
+      );
+
+      await DbQueries.recordModelOperation({
+        modelName: metrics.modelName,
+        modelTier: activeModelInfo?.tier || 1,
+        costTier: activeModelInfo?.costTier || 'cheapest',
+        operationType: context?.operationType || 'general_inference',
+        source: modelRouter.isAutoRouter() ? 'auto_router' : 'manual_override',
+        agentId: context?.agentId,
+        taskId: context?.taskId,
+        sessionId: context?.sessionId,
+        promptTokens: metrics.tokenCount?.prompt || 0,
+        completionTokens: metrics.tokenCount?.completion || 0,
+        totalTokens: metrics.tokenCount?.total || 0,
+        latencyMs: metrics.latencyMs || 0,
+        costEstimate,
+        success: metrics.success,
+        tradeoffMetrics: {
+          speedScore: metrics.latencyMs < 1200 ? 95 : metrics.latencyMs < 2500 ? 80 : 60,
+          reasoningScore: activeModelInfo?.tier ? activeModelInfo.tier * 16 : 70,
+          costEfficiencyScore: activeModelInfo?.tier ? Math.max(20, 100 - (activeModelInfo.tier - 1) * 15) : 85,
+        },
+      });
+    } catch (e) {
+      console.warn('[ModelRouter Logger] Failed to record model operation:', e);
+    }
+  });
+
   // 6. Instantiate 6 Agents (Leader + 5 Specialists)
   const leaderAgent = new LeaderAgent(modelRouter, socketBridge);
   const researchAgent = new ResearchAgent(modelRouter, socketBridge);
@@ -141,7 +179,7 @@ async function bootstrap() {
   }
 
   // 9. Initialize Fallback Chat Agent Engine
-  const chatAgentService = new ChatAgentService(modelRouter, socketBridge);
+  const chatAgentService = new ChatAgentService(modelRouter, socketBridge, memoryService);
 
   // 10. Connect Socket.IO task submission & clarification
   socketBridge.setTaskSubmitHandler(async (title, description, targetAgentId, attachments) => {
@@ -204,8 +242,9 @@ async function bootstrap() {
     }
   });
 
-  // 10. Register REST API Routes
+  // 10. Register REST API Routes & Authenticated Internal Service Routes
   registerRoutes(app, orchestrator, memoryService, modelRouter, socketBridge, adkOfficeService, chatAgentService);
+  registerInternalRoutes(app, orchestrator, memoryService, modelRouter, socketBridge, adkOfficeService, chatAgentService);
 
   // 11. Listen
   await app.listen({ port: PORT, host: '0.0.0.0' });
