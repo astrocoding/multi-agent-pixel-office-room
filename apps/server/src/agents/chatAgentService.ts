@@ -8,6 +8,7 @@ import {
 import type { ModelRouter } from '@agent-office/ai';
 import type { SocketServerBridge } from '../socket/socketServer.js';
 import { DbQueries } from '../db/queries.js';
+import { QuerySafety } from '../security/querySafety.js';
 import { WorkspaceFsTools, ShellExecutionTool, AttachmentAnalyzer } from '../tools/index.js';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -53,6 +54,7 @@ interface WorkingSessionContext {
 export class ChatAgentService {
   private router: ModelRouter;
   private socketBridge: SocketServerBridge;
+  private memoryService?: import('../memory/memoryService.js').MemoryService;
 
   // Stateful Rolling Conversation History
   private chatHistory: ChatTurn[] = [];
@@ -65,9 +67,14 @@ export class ChatAgentService {
     lastCommands: [],
   };
 
-  constructor(router: ModelRouter, socketBridge: SocketServerBridge) {
+  constructor(
+    router: ModelRouter,
+    socketBridge: SocketServerBridge,
+    memoryService?: import('../memory/memoryService.js').MemoryService
+  ) {
     this.router = router;
     this.socketBridge = socketBridge;
+    this.memoryService = memoryService;
   }
 
   /**
@@ -115,11 +122,37 @@ export class ChatAgentService {
     // Multimodal inspections if any files or images attached
     const inspections = (attachments || []).map((att) => AttachmentAnalyzer.inspectAttachment(att));
 
-    // 3. Compile Conversation History & Context Summary
+    // Persist learned attachment knowledge into memory
+    if (this.memoryService && inspections.length > 0) {
+      for (const item of inspections) {
+        if (item.isSafe) {
+          const previewText = item.extractedText ? item.extractedText.slice(0, 3000) : '';
+          this.memoryService.storeMemory(
+            targetAgentId,
+            'semantic',
+            `Learned from attachment [${item.name}] (${item.fileKind}, ${item.metadata.byteSize} bytes):\n${item.summary}\n${previewText}`,
+            {
+              summary: `Attachment analysis & knowledge: ${item.name}`,
+              importance: 8,
+              metadata: {
+                attachmentId: item.attachmentId,
+                fileName: item.name,
+                fileKind: item.fileKind,
+                byteSize: item.metadata.byteSize,
+                sessionId: sessionId || 'default',
+                timestamp: new Date().toISOString(),
+              },
+            }
+          ).catch((err: unknown) => console.warn('[Memory] Failed to store attachment memory:', err));
+        }
+      }
+    }
+
+    // 3. Compile Conversation History & Context Summary with Time-Series timestamps
     const historySnippets = this.chatHistory
       .slice(-10)
       .map((t) => {
-        let line = `[${t.senderName} (${t.role})]: "${t.text}"`;
+        let line = `[${t.timestamp || 'Recent'}] [${t.senderName} (${t.role})]: "${t.text}"`;
         if (t.toolUsed) {
           line += `\n   ↳ [Tool: ${t.toolUsed.toolName} | cwd: "${t.toolUsed.cwd}"]: \`${t.toolUsed.toolArg}\` (exit ${t.toolUsed.exitCode})\n   ↳ Output: ${t.toolUsed.outputSnippet.slice(0, 180)}`;
         }
@@ -407,11 +440,11 @@ CRITICAL RULES:
     );
 
     const finalResponse = await this.router.generateText(textPrompt, {
-      systemPrompt: `You are ${cfg.name}, ${cfg.role} in an autonomous multi-agent simulation. You have continuous memory of the conversation. Always speak factually based on real tool results.`,
+      systemPrompt: `You are ${cfg.name}, ${cfg.role} of the Agent Office Team. You have continuous memory of the conversation. Always speak factually based on real tool results. Never mention Google, Gemini, or ADK. Your team is strictly Agent Office Team.`,
       imageAttachments,
     });
 
-    const replyText = finalResponse.text.trim();
+    const replyText = QuerySafety.sanitizeBrandIdentity(finalResponse.text.trim());
 
     // 7. Record Assistant response into rolling history
     const assistantTurn: ChatTurn = {
