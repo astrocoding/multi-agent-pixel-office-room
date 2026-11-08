@@ -15,7 +15,7 @@ import type { MemoryService } from '../memory/memoryService.js';
 import type { SocketServerBridge } from '../socket/socketServer.js';
 import type { AdkOfficeService } from '../agents/adkOfficeService.js';
 import type { ChatAgentService } from '../agents/chatAgentService.js';
-import { GeminiProvider, type ModelRouter } from '@agent-office/ai';
+import { GeminiProvider, GEMINI_MODEL_CATALOG, type ModelRouter } from '@agent-office/ai';
 import crypto from 'crypto';
 
 export function registerRoutes(
@@ -156,13 +156,24 @@ export function registerRoutes(
     const primary = modelRouter.getPrimaryProvider();
     const candidateModels = primary instanceof GeminiProvider ? primary.getCandidateModels() : [];
     const activeInfo = primary instanceof GeminiProvider ? primary.getActiveModelInfo() : null;
+    const isAutoRouter = primary instanceof GeminiProvider ? primary.isAutoRouter() : true;
+
+    let analytics: Record<string, unknown> = {};
+    try {
+      analytics = await DbQueries.getModelTradeoffAnalytics();
+    } catch (e) {
+      console.warn('[ModelRouter] Could not fetch tradeoff analytics:', e);
+    }
 
     return {
       success: true,
       activeModel: metrics.activeModelName,
       costTier: metrics.costTier,
+      isAutoRouter,
       activeModelInfo: activeInfo,
       candidateModels,
+      catalog: GEMINI_MODEL_CATALOG,
+      analytics,
       metrics,
     };
   });
@@ -171,24 +182,60 @@ export function registerRoutes(
     if (!modelRouter) {
       return reply.status(500).send({ success: false, error: 'ModelRouter not initialized' });
     }
-    const body = req.body as { modelName?: string };
-    if (!body?.modelName) {
-      return reply.status(400).send({ success: false, error: 'modelName is required' });
-    }
+    const body = req.body as { modelName?: string; isAuto?: boolean };
 
     const primary = modelRouter.getPrimaryProvider();
-    if (primary instanceof GeminiProvider) {
-      primary.switchModel(body.modelName);
+    if (!(primary instanceof GeminiProvider)) {
+      return reply
+        .status(400)
+        .send({ success: false, error: 'Primary provider does not support dynamic switching' });
+    }
+
+    if (body?.isAuto) {
+      primary.enableAutoRouter();
       return {
         success: true,
+        isAutoRouter: true,
         activeModel: primary.modelName,
         activeInfo: primary.getActiveModelInfo(),
       };
     }
 
-    return reply
-      .status(400)
-      .send({ success: false, error: 'Primary provider does not support dynamic switching' });
+    if (!body?.modelName) {
+      return reply.status(400).send({ success: false, error: 'modelName or isAuto: true is required' });
+    }
+
+    primary.switchModel(body.modelName);
+    return {
+      success: true,
+      isAutoRouter: false,
+      activeModel: primary.modelName,
+      activeInfo: primary.getActiveModelInfo(),
+    };
+  });
+
+  // Model Operations & Tradeoff Evaluation History
+  server.get('/api/model-operations', async (req) => {
+    const query = req.query as { limit?: string; modelName?: string; operationType?: string };
+    const limit = query.limit ? parseInt(query.limit, 10) : 50;
+
+    try {
+      const operations = await DbQueries.getModelOperations(limit, query.modelName, query.operationType);
+      const analytics = await DbQueries.getModelTradeoffAnalytics();
+      return {
+        success: true,
+        operations,
+        analytics,
+        catalog: GEMINI_MODEL_CATALOG,
+      };
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: (e as Error).message,
+        catalog: GEMINI_MODEL_CATALOG,
+        operations: [],
+      };
+    }
   });
 
   // ============================================================================
@@ -283,6 +330,23 @@ export function registerRoutes(
     }
 
     const messages = await DbQueries.getChatMessages(id, 100);
+    return { success: true, count: messages.length, messages };
+  });
+
+  // Query historical chat time-series messages across sessions or within a session
+  server.get('/api/chats/history', async (req) => {
+    const { sessionId, query, timeRange, limit } = req.query as {
+      sessionId?: string;
+      query?: string;
+      timeRange?: 'today' | 'yesterday' | 'two_days_ago' | 'three_days_ago' | 'this_week' | 'all';
+      limit?: string;
+    };
+    const messages = await DbQueries.queryHistoricalChat({
+      sessionId,
+      query,
+      timeRange,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
     return { success: true, count: messages.length, messages };
   });
 
