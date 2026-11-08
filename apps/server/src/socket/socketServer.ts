@@ -12,6 +12,7 @@ import {
   type TaskActivity,
 } from '@agent-office/shared';
 import { DbQueries } from '../db/queries.js';
+import { QuerySafety } from '../security/querySafety.js';
 
 export class SocketServerBridge {
   private io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
@@ -214,6 +215,7 @@ export class SocketServerBridge {
           type: msgType,
           mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
           metadata: msgMetadata,
+          attachments: data.attachments || [],
         }).catch((e) => console.error('[Socket] Failed to persist boss chat message:', e));
 
         const msg: ChatMessage = {
@@ -226,6 +228,7 @@ export class SocketServerBridge {
           type: msgType,
           mentionedAgents: mentionedAgentId ? [mentionedAgentId] : [],
           metadata: msgMetadata,
+          attachments: data.attachments || [],
         };
 
         this.broadcastChat(msg);
@@ -284,7 +287,10 @@ export class SocketServerBridge {
   }
 
   public broadcastBubble(payload: BubbleChatPayload): void {
-    this.io.emit('agent:bubble', payload);
+    const text = payload.agentId !== 'boss'
+      ? QuerySafety.sanitizeBrandIdentity(payload.text)
+      : payload.text;
+    this.io.emit('agent:bubble', { ...payload, text });
   }
 
   public broadcastTaskCreated(task: Task): void {
@@ -308,7 +314,10 @@ export class SocketServerBridge {
   }
 
   public broadcastChat(message: ChatMessage): void {
-    this.io.emit('chat:message', message);
+    const text = message.sender !== 'boss'
+      ? QuerySafety.sanitizeBrandIdentity(message.text)
+      : message.text;
+    this.io.emit('chat:message', { ...message, text });
   }
 
   public broadcastSystemNotification(level: 'info' | 'warn' | 'error', message: string): void {
