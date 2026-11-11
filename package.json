@@ -9,7 +9,14 @@
     "dev:all": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "telegram:dev": "pnpm --filter telegram-bot dev",
+    "telegram:build": "pnpm --filter telegram-bot build",
+    "telegram:test": "pnpm --filter telegram-bot test",
+    "telegram:test:integration": "pnpm --filter telegram-bot test:integration",
+    "telegram:test:security": "pnpm --filter telegram-bot test:security",
+    "telegram:webhook:info": "pnpm --filter telegram-bot webhook:info",
+    "telegram:webhook:set": "pnpm --filter telegram-bot webhook:set"
   },
   "packageManager": "pnpm@11.28.13",
   "devDependencies": {
