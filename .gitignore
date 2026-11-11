@@ -21,6 +21,7 @@ serviceAccountKey.json
 # 2. Dependencies & Package Managers
 # ------------------------------------------------------------------------------
 node_modules/
+*node_modules
 **/node_modules/
 .pnpm-store/
 **/.pnpm-store/
@@ -67,6 +68,18 @@ temp/
 tmp/
 **/.tmp/
 **/.temp/
+uploads/
+**/uploads/
+downloads/
+**/downloads/
+storage/
+**/storage/
+data/
+**/data/
+*.local
+*.local.*
+*.pid
+*.seed
 
 # ------------------------------------------------------------------------------
 # 5. Local Databases, Cache Dumps & State Storage
