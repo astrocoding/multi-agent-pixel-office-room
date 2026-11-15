@@ -75,6 +75,7 @@ export class GoogleAdkOfficeSwarm {
       planTaskExecutionTool,
       requestHumanApprovalTool,
       searchKnowledgeSopTool,
+      generateImageTool,
     } = this.tools;
 
     // 1. Engineering Specialist (Iky / Torvalds) - Gemini 3.8 Flash (Flagship Code Model)
@@ -96,6 +97,7 @@ export class GoogleAdkOfficeSwarm {
         listDirectoryTool,
         getTaskDetailsTool,
         searchKnowledgeSopTool,
+        generateImageTool,
       ],
     });
 
@@ -116,6 +118,7 @@ export class GoogleAdkOfficeSwarm {
         listDirectoryTool,
         getTaskDetailsTool,
         searchKnowledgeSopTool,
+        generateImageTool,
       ],
     });
 
@@ -130,7 +133,13 @@ export class GoogleAdkOfficeSwarm {
       generateContentConfig: {
         temperature: 0.1,
       },
-      tools: [executeBashTool, writeFileTool, listDirectoryTool, getTaskDetailsTool],
+      tools: [
+        executeBashTool,
+        writeFileTool,
+        listDirectoryTool,
+        getTaskDetailsTool,
+        generateImageTool,
+      ],
     });
 
     // 4. QA & Critic Specialist (Rai / Iris) - Gemini 3.6 Flash (Calibrated Production)
@@ -195,6 +204,7 @@ export class GoogleAdkOfficeSwarm {
         getTaskDetailsTool,
         recallMemoryTool,
         storeMemoryTool,
+        generateImageTool,
       ],
       subAgents: [this.torvalds, this.ada, this.volt, this.iris, this.mnemo],
     });

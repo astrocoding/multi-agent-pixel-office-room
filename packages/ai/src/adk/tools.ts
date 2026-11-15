@@ -151,6 +151,35 @@ export interface OfficeToolHandlers {
     }>;
     formattedSummary: string;
   }>;
+  queryAgentLearnings?: (params: {
+    patternType?: string;
+    intentCategory?: string;
+    limit?: number;
+  }) => Promise<{
+    totalFound: number;
+    patterns: unknown[];
+    formattedSummary: string;
+  }>;
+  generateImage?: (params: {
+    prompt: string;
+    format?: 'png' | 'jpg' | 'jpeg' | 'webp';
+    model?: string;
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    width?: number;
+    height?: number;
+    style?: string;
+    outputFileName?: string;
+  }) => Promise<{
+    success: boolean;
+    modelUsed: string;
+    format: string;
+    fileName: string;
+    filePath: string;
+    url: string;
+    markdownPreview: string;
+    prompt: string;
+    error?: string;
+  }>;
 }
 
 export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
@@ -508,6 +537,96 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     },
   });
 
+  const queryAgentLearningsTool = new FunctionTool({
+    name: 'query_agent_learning_patterns',
+    description:
+      'Queries multi-agent historical learning patterns, execution cycles, and agent behaviors. Used by Dhea (Memory) and Zen (Leader) to study past successful solutions, tool patterns, QA criteria, and optimize decision-making workflows.',
+    parameters: z.object({
+      patternType: z
+        .enum(['task_solution', 'tool_strategy', 'error_resolution', 'multi_agent_flow', 'behavior_rule', 'all'])
+        .optional()
+        .describe('The category of learning pattern to retrieve.'),
+      intentCategory: z.string().optional().describe('Optional intent category (e.g. crud_api, refactor, devops).'),
+      limit: z.number().optional().describe('Maximum number of patterns to return (defaults to 10).'),
+    }),
+    execute: async ({ patternType, intentCategory, limit }) => {
+      if (handlers.queryAgentLearnings) {
+        return await handlers.queryAgentLearnings({ patternType, intentCategory, limit });
+      }
+      return {
+        totalFound: 0,
+        patterns: [],
+        formattedSummary: 'Agent learning query handler not configured.',
+      };
+    },
+  });
+
+  const generateImageTool = new FunctionTool({
+    name: 'generate_image',
+    description:
+      'Generates high-quality graphics, illustrations, UI mockups, diagrams, pixel-art sprites, icons, or banners in PNG, JPG, JPEG, or WEBP format using the Nano Banana image models suite (gemini-3.1-flash-lite-image, gemini-2.5-flash-image, gemini-3.1-flash-image, gemini-nano-banana-2.1, gemini-3-pro-image). Automatically routes to the optimal model based on prompt requirements, saves the image to workspace assets, and returns direct URL and markdown preview syntax ![Alt](url).',
+    parameters: z.object({
+      prompt: z
+        .string()
+        .describe(
+          'Detailed description of the image to generate: visual elements, colors, lighting, subjects, composition, and typography.'
+        ),
+      format: z
+        .enum(['png', 'jpg', 'jpeg', 'webp'])
+        .optional()
+        .describe('Output image file format. Defaults to "png".'),
+      model: z
+        .enum([
+          'gemini-3.1-flash-lite-image',
+          'gemini-2.5-flash-image',
+          'gemini-3.1-flash-image',
+          'gemini-nano-banana-2.1',
+          'gemini-3-pro-image',
+        ])
+        .optional()
+        .describe(
+          'Specific Nano Banana model ID to use. If omitted, the intelligent auto-router automatically selects the best model based on prompt characteristics (studio layout -> gemini-3-pro-image, world knowledge & precision edit -> gemini-nano-banana-2.1, bulk/low-latency -> gemini-3.1-flash-lite-image, conversational -> gemini-2.5-flash-image, versatile/text -> gemini-3.1-flash-image).'
+        ),
+      aspectRatio: z
+        .enum(['1:1', '16:9', '9:16', '4:3', '3:4'])
+        .optional()
+        .describe('Desired aspect ratio. Defaults to "1:1".'),
+      style: z
+        .string()
+        .optional()
+        .describe(
+          'Optional visual style hint, e.g. "pixel_art", "vector", "ui_wireframe", "diagram", "photorealistic", "studio_branding".'
+        ),
+      outputFileName: z
+        .string()
+        .optional()
+        .describe('Optional custom file name without extension, e.g. "student_crud_architecture_diagram"'),
+    }),
+    execute: async ({ prompt, format, model, aspectRatio, style, outputFileName }) => {
+      if (handlers.generateImage) {
+        return await handlers.generateImage({
+          prompt,
+          format,
+          model,
+          aspectRatio,
+          style,
+          outputFileName,
+        });
+      }
+      return {
+        success: false,
+        modelUsed: model || 'gemini-3.1-flash-image',
+        format: format || 'png',
+        fileName: '',
+        filePath: '',
+        url: '',
+        markdownPreview: '',
+        prompt,
+        error: 'Image generation handler is not configured on this host.',
+      };
+    },
+  });
+
   return {
     executeBashTool,
     readFileTool,
@@ -524,6 +643,8 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     searchKnowledgeSopTool,
     queryModelTradeoffsTool,
     queryHistoricalChatTool,
+    queryAgentLearningsTool,
+    generateImageTool,
   };
 }
 
