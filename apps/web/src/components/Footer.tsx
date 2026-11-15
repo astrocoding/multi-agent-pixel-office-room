@@ -1,6 +1,5 @@
 import React from 'react';
 import { useActivityStore } from '../stores/useActivityStore.js';
-import { useTaskStore } from '../stores/useTaskStore.js';
 
 interface FooterProps {
   onOpenActivityLog: () => void;
@@ -13,7 +12,6 @@ export const Footer: React.FC<FooterProps> = ({
   isConnected,
 }) => {
   const { activities } = useActivityStore();
-  const { tasks } = useTaskStore();
 
   return (
     <footer className="bg-[#121615] border-t-2 border-[#465047] px-3 sm:px-4 py-2 mt-auto shrink-0 shadow-[0_-2px_0_#000] font-pixel-mono text-[10px] sm:text-[11px] text-[#869184] flex flex-col sm:flex-row items-center justify-between gap-2 select-none">
@@ -22,16 +20,13 @@ export const Footer: React.FC<FooterProps> = ({
         <span className="text-[#CCF12B] font-pixel-heading font-bold text-[10px]">
           [ AO-SYSTEM ]
         </span>
+        <span className="text-[#465047] hidden xs:inline-block">|</span>
         <span className="text-[#B6BFAE] hidden xs:inline-block">
           8-Bit Autonomous Multi-Agent Workspace
         </span>
-        <span className="text-[#465047] hidden sm:inline-block">|</span>
-        <span className="text-[#869184]">
-          ACTIVE TASKS: <strong className="text-[#F0F1DD]">{tasks.length}</strong>
-        </span>
-        <span className="text-[#465047] hidden sm:inline-block">|</span>
         {/* Mobile-only compact connection indicator */}
-        <span className="flex sm:hidden items-center gap-1 font-pixel-heading text-[9.5px]">
+        <span className="flex sm:hidden items-center gap-1.5 font-pixel-heading text-[9.5px]">
+          <span className="text-[#465047]">|</span>
           <span className={`w-1.5 h-1.5 ${isConnected ? 'bg-[#79D693]' : 'bg-[#F16E5E]'}`} />
           <span className={isConnected ? 'text-[#79D693]' : 'text-[#F16E5E]'}>
             {isConnected ? 'ONLINE' : 'OFFLINE'}

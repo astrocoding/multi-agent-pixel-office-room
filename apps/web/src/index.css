@@ -264,3 +264,12 @@ select.appearance-none::-ms-expand {
   justify-content: center;
   line-height: 1.2;
 }
+
+/* Navbar Toggle Half Circle */
+.navbar-toggle-half-circle {
+  border-bottom-left-radius: 9999px !important;
+  border-bottom-right-radius: 9999px !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+

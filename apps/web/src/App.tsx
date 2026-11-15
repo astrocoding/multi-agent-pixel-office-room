@@ -19,6 +19,7 @@ export const App: React.FC = () => {
   const [modelTier, setModelTier] = useState<string>('cheapest');
   const [isAutoRouter, setIsAutoRouter] = useState<boolean>(true);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+  const [isNavbarVisible, setIsNavbarVisible] = useState(true);
   const { setAgents, updateAgentStatus } = useAgentStore();
   const { setTasks, addTask, updateTask, addTerminalLog, setClarification } = useTaskStore();
   const { addMessage, fetchSessions } = useChatStore();
@@ -151,7 +152,13 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#090B0A] text-[#F0F1DD] flex flex-col font-pixel-body">
       {/* Top Header Bar - Authentic Retro Terminal Control Bar */}
-      <header className="bg-[#121615] border-b-2 border-[#465047] px-3 sm:px-4 py-2 flex items-center justify-between shrink-0 shadow-[0_2px_0_#000]">
+      <header
+        className={`bg-[#121615] border-[#465047] px-3 sm:px-4 flex items-center justify-between shrink-0 transition-all duration-300 ease-in-out ${
+          isNavbarVisible
+            ? 'max-h-20 py-2 border-b-2 opacity-100 translate-y-0 shadow-[0_2px_0_#000]'
+            : 'max-h-0 py-0 border-b-0 opacity-0 -translate-y-full overflow-hidden pointer-events-none shadow-none'
+        }`}
+      >
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <img
             src={appLogo}
@@ -167,7 +174,7 @@ export const App: React.FC = () => {
           </h1>
         </div>
 
-        {/* Model Router Select Dropdown & Runtime Connection Pill */}
+        {/* Model Router Select Dropdown, Runtime Connection Pill, & Close Navbar Button */}
         <div className="flex items-center gap-2 sm:gap-3 text-xs font-pixel-heading shrink-0">
           {/* Custom Model Router Selector Dropdown */}
           <ModelRouterSelect
@@ -192,11 +199,39 @@ export const App: React.FC = () => {
               {isConnected ? 'connected' : 'offline'}
             </span>
           </div>
+
+          {/* Close Navbar Button */}
+          <button
+            type="button"
+            onClick={() => setIsNavbarVisible(false)}
+            className="bg-[#0D110F] border border-[#465047] hover:border-[#CCF12B] text-[#869184] hover:text-[#CCF12B] px-2 py-1 flex items-center justify-center transition-colors cursor-pointer shadow-[1px_1px_0_#000] active:translate-x-[1px] active:translate-y-[1px]"
+            title="Hide Navbar Header"
+            aria-label="Hide Navbar Header"
+          >
+            <span className="text-[11px] font-pixel-heading leading-none">✕</span>
+          </button>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 p-3 sm:p-4 max-w-[1750px] w-full mx-auto flex flex-col gap-3">
+      {/* Fixed Half-Circle Re-open Navbar Button */}
+      <button
+        type="button"
+        onClick={() => setIsNavbarVisible(true)}
+        className={`navbar-toggle-half-circle fixed top-0 right-3 sm:right-4 z-50 bg-[#121615] border-x-2 border-b-2 border-[#465047] hover:border-[#CCF12B] text-[#CCF12B] hover:bg-[#1B221F] w-12 h-5 flex items-center justify-center shadow-[0_4px_8px_rgba(0,0,0,0.7)] cursor-pointer transition-all duration-300 ease-in-out group ${
+          !isNavbarVisible
+            ? 'translate-y-0 opacity-100 pointer-events-auto'
+            : '-translate-y-full opacity-0 pointer-events-none'
+        }`}
+        title="Show Navbar Header"
+        aria-label="Show Navbar Header"
+      >
+        <span className="font-pixel-heading text-[9px] leading-none text-[#CCF12B] group-hover:translate-y-0.5 transition-transform -mt-0.5 select-none">
+          ▼
+        </span>
+      </button>
+
+      {/* Main Container - Automatically fills the navbar space without blank gap when navbar is hidden */}
+      <main className="flex-1 p-3 sm:p-4 max-w-[1750px] w-full mx-auto flex flex-col gap-3 transition-all duration-300 ease-in-out">
         {/* 2-Column Balanced Layout:
             Left Column: Game World + Task Dispatch Engine (Matching Game Width, Comfortable Height)
             Right Column: Office Chat (Proportionally Balanced Full Height) */}
