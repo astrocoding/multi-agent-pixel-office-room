@@ -126,6 +126,61 @@ export interface Task {
       result?: string;
     }[];
   } | null;
+  roadmap?: TaskRoadmapRecord[];
+  deliverables?: TaskDeliverableRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskRoadmapRecord {
+  id: string;
+  taskId: string;
+  stepNumber: number;
+  stage: string;
+  agentId: AgentId | string;
+  title: string;
+  description?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  resultSummary?: string;
+  toolCalls?: ToolExecutionRecord[];
+  durationMs?: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface TaskDeliverableRecord {
+  id: string;
+  taskId: string;
+  deliverableType: 'final_solution' | 'qa_audit' | 'architecture_spec' | 'automation_script' | 'image_asset';
+  content: string;
+  qaVerdict: 'APPROVED' | 'REJECTED' | 'CONDITIONAL' | string;
+  qaNotes?: string;
+  qaTestsRun?: Array<{
+    name: string;
+    command?: string;
+    passed: boolean;
+    output?: string;
+  }>;
+  testedBy?: string;
+  solverName: string;
+  handoffChain?: TaskHandoffRecord[];
+  evaluationMetrics?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AgentLearningPattern {
+  id: string;
+  patternType: 'task_solution' | 'tool_strategy' | 'error_resolution' | 'multi_agent_flow' | 'behavior_rule';
+  title: string;
+  intentCategory?: string;
+  contextSummary: string;
+  patternContent: string;
+  taskId?: string;
+  agentId: AgentId | string;
+  successRate: number;
+  applicationCount: number;
+  embedding?: number[];
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -244,6 +299,7 @@ export interface ModelCatalogItem {
   strengths: string[];
   recommendedFor: string[];
   tradeoffs: ModelTradeoffAttributes;
+  category?: 'text' | 'image' | 'multimodal';
 }
 
 export interface ModelOperationRecord {
@@ -259,7 +315,8 @@ export interface ModelOperationRecord {
     | 'instruct'
     | 'tool_call'
     | 'embedding'
-    | 'clarification';
+    | 'clarification'
+    | 'image_generation';
   source: 'auto_router' | 'manual_override';
   agentId?: AgentId | 'boss' | 'system';
   taskId?: string;
