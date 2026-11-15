@@ -25,6 +25,95 @@ export const ADK_MODEL_TIERS = [
 ] as const;
 
 /**
+ * 5 Nano Banana Image Generation Model Tiers:
+ * 1. gemini-3.1-flash-lite-image: Nano Banana 2 Lite - Versi paling ringan & cepat untuk pembuatan gambar massal atau latensi sangat rendah
+ * 2. gemini-2.5-flash-image: Nano Banana (Dasar) - Model generasi awal untuk pembuatan & pengeditan gambar percakapan
+ * 3. gemini-3.1-flash-image: Nano Banana 2 - Model utama serbaguna (kecepatan tinggi, kualitas visual tinggi, rendering teks akurat)
+ * 4. gemini-nano-banana-2.1: Nano Banana 2.1 - Versi terbaru (pemahaman pengetahuan dunia luas, ketepatan pengeditan tinggi)
+ * 5. gemini-3-pro-image: Nano Banana Pro - Dioptimalkan untuk tata letak kompleks, tipografi tingkat studio, penalaran desain mendalam
+ */
+export const IMAGE_MODEL_TIERS = [
+  'gemini-3.1-flash-lite-image',
+  'gemini-2.5-flash-image',
+  'gemini-3.1-flash-image',
+  'gemini-nano-banana-2.1',
+  'gemini-3-pro-image',
+] as const;
+
+export type ImageModelTier = (typeof IMAGE_MODEL_TIERS)[number];
+
+/**
+ * Intelligent Image Auto-Router:
+ * Analyzes the user's visual requirements to route to the optimal Nano Banana image model.
+ */
+export function selectOptimalImageModel(prompt: string, requestedModel?: string): ImageModelTier {
+  if (requestedModel && (IMAGE_MODEL_TIERS as readonly string[]).includes(requestedModel)) {
+    return requestedModel as ImageModelTier;
+  }
+
+  const p = prompt.toLowerCase();
+
+  // 1. Studio layout, complex composition, magazine/poster, deep design reasoning -> Pro
+  if (
+    p.includes('studio') ||
+    p.includes('poster') ||
+    p.includes('kompleks') ||
+    p.includes('complex') ||
+    p.includes('layout') ||
+    p.includes('tata letak') ||
+    p.includes('magazine') ||
+    p.includes('branding') ||
+    p.includes('infografis')
+  ) {
+    return 'gemini-3-pro-image';
+  }
+
+  // 2. High-precision iterative editing & broad world knowledge -> Nano Banana 2.1
+  if (
+    p.includes('edit') ||
+    p.includes('revisi') ||
+    p.includes('presisi') ||
+    p.includes('precision') ||
+    p.includes('ketepatan') ||
+    p.includes('knowledge') ||
+    p.includes('pengetahuan dunia') ||
+    p.includes('world') ||
+    p.includes('landmark') ||
+    p.includes('real-world')
+  ) {
+    return 'gemini-nano-banana-2.1';
+  }
+
+  // 3. Bulk, batch, ultra-fast latency, sprites, mass generation -> 2 Lite
+  if (
+    p.includes('bulk') ||
+    p.includes('massal') ||
+    p.includes('batch') ||
+    p.includes('cepat') ||
+    p.includes('fast') ||
+    p.includes('sprite') ||
+    p.includes('latensi') ||
+    p.includes('icon')
+  ) {
+    return 'gemini-3.1-flash-lite-image';
+  }
+
+  // 4. Conversational simple chat, avatar, basic drawing -> Dasar
+  if (
+    p.includes('chat') ||
+    p.includes('obrolan') ||
+    p.includes('sederhana') ||
+    p.includes('simple') ||
+    p.includes('avatar')
+  ) {
+    return 'gemini-2.5-flash-image';
+  }
+
+  // 5. Default versatile flagship: Nano Banana 2 (high visual quality + accurate typography)
+  return 'gemini-3.1-flash-image';
+}
+
+/**
  * Specialist agent affinity ordering:
  * Each agent uses the most cost-efficient and specialized model for its domain,
  * with fast-failover to alternative tiers.

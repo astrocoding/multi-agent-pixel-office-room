@@ -16,7 +16,10 @@ import type { SocketServerBridge } from '../socket/socketServer.js';
 import type { AdkOfficeService } from '../agents/adkOfficeService.js';
 import type { ChatAgentService } from '../agents/chatAgentService.js';
 import { GeminiProvider, GEMINI_MODEL_CATALOG, type ModelRouter } from '@agent-office/ai';
+import { ImageGenerationService } from '../services/imageGenerationService.js';
 import crypto from 'crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export function registerRoutes(
   server: FastifyInstance,
@@ -50,6 +53,35 @@ export function registerRoutes(
       return reply.status(404).send({ success: false, error: 'Task not found' });
     }
     return { success: true, task };
+  });
+
+  server.get('/api/tasks/:id/terminal-logs', async (req) => {
+    const { id } = req.params as { id: string };
+    const logs = await DbQueries.getTerminalLogsByTaskId(id);
+    return { success: true, taskId: id, terminalLogs: logs };
+  });
+
+  server.get('/api/tasks/:id/roadmap', async (req) => {
+    const { id } = req.params as { id: string };
+    const steps = await DbQueries.getRoadmapByTaskId(id);
+    return { success: true, taskId: id, roadmap: steps };
+  });
+
+  server.get('/api/tasks/:id/deliverables', async (req) => {
+    const { id } = req.params as { id: string };
+    const deliverables = await DbQueries.getDeliverablesByTaskId(id);
+    return { success: true, taskId: id, deliverables };
+  });
+
+  server.get('/api/learnings', async (req) => {
+    const query = req.query as { patternType?: string; intentCategory?: string; limit?: string };
+    const limit = query.limit ? parseInt(query.limit, 10) : 30;
+    const learnings = await DbQueries.getLearningPatterns({
+      patternType: query.patternType,
+      intentCategory: query.intentCategory,
+      limit,
+    });
+    return { success: true, learnings };
   });
 
   server.post('/api/tasks', async (req, reply) => {
@@ -236,6 +268,60 @@ export function registerRoutes(
         operations: [],
       };
     }
+  });
+
+  // ============================================================================
+  // Image Generation & Asset Serving (Nano Banana Models Suite)
+  // ============================================================================
+  const imageService = new ImageGenerationService();
+
+  // Serve generated image assets
+  server.get('/api/generated-images/:filename', async (req, reply) => {
+    const { filename } = req.params as { filename: string };
+    const safeName = path.basename(filename);
+    const storageDir = imageService.getStorageDirectory();
+    const filePath = path.join(storageDir, safeName);
+
+    if (!fs.existsSync(filePath)) {
+      return reply.status(404).send({ success: false, error: 'Image asset not found' });
+    }
+
+    const ext = path.extname(safeName).toLowerCase();
+    let mimeType = 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.svg') mimeType = 'image/svg+xml';
+
+    const buffer = fs.readFileSync(filePath);
+    reply.type(mimeType);
+    return reply.send(buffer);
+  });
+
+  // Direct Image Generation API
+  server.post('/api/images/generate', async (req, reply) => {
+    const body = req.body as {
+      prompt: string;
+      format?: 'png' | 'jpg' | 'jpeg' | 'webp';
+      model?: string;
+      aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+      style?: string;
+      outputFileName?: string;
+    };
+
+    if (!body?.prompt || typeof body.prompt !== 'string') {
+      return reply.status(400).send({ success: false, error: 'Prompt is required' });
+    }
+
+    const result = await imageService.generateImage({
+      prompt: body.prompt,
+      format: body.format,
+      model: body.model,
+      aspectRatio: body.aspectRatio,
+      style: body.style,
+      outputFileName: body.outputFileName,
+    });
+
+    return reply.status(201).send(result);
   });
 
   // ============================================================================

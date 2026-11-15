@@ -76,6 +76,9 @@ storage/
 **/storage/
 data/
 **/data/
+generated-images/
+**/generated-images/
+apps/server/public/generated-images/
 *.local
 *.local.*
 *.pid

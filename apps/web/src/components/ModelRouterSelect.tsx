@@ -17,6 +17,7 @@ export const ModelRouterSelect: React.FC<ModelRouterSelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'catalog' | 'tradeoffs'>('catalog');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'text' | 'image'>('all');
   const [catalog, setCatalog] = useState<ModelCatalogItem[]>([]);
   const [analytics, setAnalytics] = useState<Record<string, ModelPerformanceAnalytics>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -113,8 +114,13 @@ export const ModelRouterSelect: React.FC<ModelRouterSelectProps> = ({
     }
   };
 
-  // Filter catalog based on search query
+  // Filter catalog based on search query and category
+  const textCount = catalog.filter((m) => m.category !== 'image').length;
+  const imageCount = catalog.filter((m) => m.category === 'image').length;
+
   const filteredCatalog = catalog.filter((m) => {
+    if (categoryFilter === 'text' && m.category === 'image') return false;
+    if (categoryFilter === 'image' && m.category !== 'image') return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -235,6 +241,44 @@ export const ModelRouterSelect: React.FC<ModelRouterSelectProps> = ({
             )}
           </div>
 
+          {/* Category Filter Pills */}
+          <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto custom-scrollbar pb-0.5">
+            <span className="text-[9px] font-pixel-heading text-[#869184] uppercase shrink-0">FILTER:</span>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('all')}
+              className={`text-[9px] font-pixel-heading px-1.5 py-0.2 border cursor-pointer uppercase transition-colors shrink-0 ${
+                categoryFilter === 'all'
+                  ? 'bg-[#1B211D] text-[#CCF12B] border-[#CCF12B]'
+                  : 'bg-[#0D110F] text-[#869184] border-[#465047] hover:text-[#F0F1DD]'
+              }`}
+            >
+              ALL ({catalog.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('text')}
+              className={`text-[9px] font-pixel-heading px-1.5 py-0.2 border cursor-pointer uppercase transition-colors shrink-0 ${
+                categoryFilter === 'text'
+                  ? 'bg-[#1B211D] text-[#36B9ED] border-[#36B9ED]'
+                  : 'bg-[#0D110F] text-[#869184] border-[#465047] hover:text-[#F0F1DD]'
+              }`}
+            >
+              TEXT &amp; CODE ({textCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('image')}
+              className={`text-[9px] font-pixel-heading px-1.5 py-0.2 border cursor-pointer uppercase transition-colors shrink-0 ${
+                categoryFilter === 'image'
+                  ? 'bg-[#1B211D] text-[#F5BC4D] border-[#F5BC4D]'
+                  : 'bg-[#0D110F] text-[#869184] border-[#465047] hover:text-[#F5BC4D]'
+              }`}
+            >
+              🎨 NANO BANANA IMAGE ({imageCount})
+            </button>
+          </div>
+
           {/* Tab Switcher & Auto-Router Quick Action */}
           <div className="flex items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-1">
@@ -298,13 +342,18 @@ export const ModelRouterSelect: React.FC<ModelRouterSelectProps> = ({
                   >
                     {/* Header Row */}
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-pixel-heading font-bold text-xs text-[#F0F1DD]">
                           {model.name}
                         </span>
                         <span className="text-[9px] font-pixel-mono bg-[#121615] text-[#869184] border border-[#465047] px-1 py-0.2">
                           {model.version || model.id}
                         </span>
+                        {model.category === 'image' && (
+                          <span className="text-[8px] font-pixel-heading bg-[#1B211D] text-[#F5BC4D] border border-[#F5BC4D] px-1.5 py-0.2">
+                            IMAGE GEN
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -341,9 +390,9 @@ export const ModelRouterSelect: React.FC<ModelRouterSelectProps> = ({
                         </span>
                       </div>
                       <div className="bg-[#121615] p-1 border border-[#465047]/60">
-                        <span className="text-[#869184] block">CONTEXT:</span>
+                        <span className="text-[#869184] block">{model.category === 'image' ? 'RESOLUTION:' : 'CONTEXT:'}</span>
                         <span className="text-[#F0F1DD] font-bold">
-                          {model.tradeoffs?.contextWindow || '1M tokens'}
+                          {model.tradeoffs?.contextWindow || (model.category === 'image' ? '1024x1024' : '1M tokens')}
                         </span>
                       </div>
                       <div className="bg-[#121615] p-1 border border-[#465047]/60">
