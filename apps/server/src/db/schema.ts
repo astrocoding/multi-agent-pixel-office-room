@@ -301,6 +301,110 @@ export async function initDatabase(): Promise<void> {
         notify_approval_required BOOLEAN DEFAULT true,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      -- 12. Task Terminal Tool Execution Logs (Real-time tracking of bash commands, file tools, and API executions)
+      CREATE TABLE IF NOT EXISTS task_terminal_logs (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        tool_name VARCHAR(64) NOT NULL,
+        command TEXT,
+        parameters JSONB DEFAULT '{}'::jsonb,
+        stdout TEXT,
+        stderr TEXT,
+        exit_code INT DEFAULT 0,
+        execution_time_ms INT DEFAULT 0,
+        executed_by VARCHAR(64) NOT NULL,
+        success BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_terminal_logs_task ON task_terminal_logs(task_id, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_terminal_logs_agent ON task_terminal_logs(executed_by);
+
+      -- 13. Task Roadmaps & Multi-Agent Execution Flows
+      CREATE TABLE IF NOT EXISTS task_roadmaps (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        step_number INT NOT NULL,
+        stage VARCHAR(64) NOT NULL,
+        agent_id VARCHAR(64) NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        result_summary TEXT,
+        tool_calls JSONB DEFAULT '[]'::jsonb,
+        duration_ms INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_roadmaps_task ON task_roadmaps(task_id, step_number ASC);
+
+      -- 14. Task Deliverables & QA Verification Audit History
+      CREATE TABLE IF NOT EXISTS task_deliverables (
+        id VARCHAR(64) PRIMARY KEY,
+        task_id VARCHAR(64) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        deliverable_type VARCHAR(64) DEFAULT 'final_solution',
+        content TEXT NOT NULL,
+        qa_verdict VARCHAR(64) DEFAULT 'APPROVED',
+        qa_notes TEXT,
+        qa_tests_run JSONB DEFAULT '[]'::jsonb,
+        tested_by VARCHAR(64),
+        solver_name VARCHAR(120) NOT NULL,
+        handoff_chain JSONB DEFAULT '[]'::jsonb,
+        evaluation_metrics JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_deliverables_task ON task_deliverables(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_deliverables_verdict ON task_deliverables(qa_verdict);
+    `);
+
+    // 15. Agent Learning Patterns & Behavior Cycle Memory (pgvector-backed)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS agent_learning_patterns (
+          id VARCHAR(64) PRIMARY KEY,
+          pattern_type VARCHAR(64) NOT NULL,
+          title TEXT NOT NULL,
+          intent_category VARCHAR(120),
+          context_summary TEXT NOT NULL,
+          pattern_content TEXT NOT NULL,
+          task_id VARCHAR(64),
+          agent_id VARCHAR(64) NOT NULL,
+          success_rate REAL DEFAULT 1.0,
+          application_count INT DEFAULT 1,
+          embedding vector(768),
+          metadata JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+    } catch {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS agent_learning_patterns (
+          id VARCHAR(64) PRIMARY KEY,
+          pattern_type VARCHAR(64) NOT NULL,
+          title TEXT NOT NULL,
+          intent_category VARCHAR(120),
+          context_summary TEXT NOT NULL,
+          pattern_content TEXT NOT NULL,
+          task_id VARCHAR(64),
+          agent_id VARCHAR(64) NOT NULL,
+          success_rate REAL DEFAULT 1.0,
+          application_count INT DEFAULT 1,
+          embedding JSONB,
+          metadata JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+    }
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_learning_patterns_type ON agent_learning_patterns(pattern_type);
+      CREATE INDEX IF NOT EXISTS idx_learning_patterns_intent ON agent_learning_patterns(intent_category);
+      CREATE INDEX IF NOT EXISTS idx_learning_patterns_task ON agent_learning_patterns(task_id);
     `);
 
     // Seed default chat session if table is empty

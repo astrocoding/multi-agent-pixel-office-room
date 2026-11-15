@@ -14,6 +14,10 @@ import type {
   TaskApproval,
   TaskStateType,
   TelegramIdentity,
+  ToolExecutionRecord,
+  TaskRoadmapRecord,
+  TaskDeliverableRecord,
+  AgentLearningPattern,
 } from '@agent-office/shared';
 
 export class DbQueries {
@@ -105,14 +109,110 @@ export class DbQueries {
     return res.rowCount || 0;
   }
 
+  public static async populateTaskDetails(tasks: Task[]): Promise<Task[]> {
+    if (tasks.length === 0) return [];
+    const taskIds = tasks.map((t) => t.id);
+
+    try {
+      const [terminalLogsRes, roadmapsRes, deliverablesRes] = await Promise.all([
+        dbPool.query(
+          `SELECT * FROM task_terminal_logs WHERE task_id = ANY($1) ORDER BY created_at ASC;`,
+          [taskIds]
+        ),
+        dbPool.query(
+          `SELECT * FROM task_roadmaps WHERE task_id = ANY($1) ORDER BY step_number ASC;`,
+          [taskIds]
+        ),
+        dbPool.query(
+          `SELECT * FROM task_deliverables WHERE task_id = ANY($1) ORDER BY created_at DESC;`,
+          [taskIds]
+        ),
+      ]);
+
+      const logsMap = new Map<string, ToolExecutionRecord[]>();
+      for (const r of terminalLogsRes.rows) {
+        const list = logsMap.get(r.task_id) || [];
+        list.push({
+          id: r.id,
+          toolName: r.tool_name,
+          command: r.command || undefined,
+          parameters: r.parameters,
+          stdout: r.stdout,
+          stderr: r.stderr,
+          exitCode: r.exit_code,
+          executionTimeMs: r.execution_time_ms,
+          executedBy: r.executed_by as AgentId,
+          success: r.success,
+          timestamp: r.created_at.toISOString(),
+        });
+        logsMap.set(r.task_id, list);
+      }
+
+      const roadmapsMap = new Map<string, TaskRoadmapRecord[]>();
+      for (const r of roadmapsRes.rows) {
+        const list = roadmapsMap.get(r.task_id) || [];
+        list.push({
+          id: r.id,
+          taskId: r.task_id,
+          stepNumber: r.step_number,
+          stage: r.stage,
+          agentId: r.agent_id,
+          title: r.title,
+          description: r.description || undefined,
+          status: r.status,
+          resultSummary: r.result_summary || undefined,
+          toolCalls: r.tool_calls,
+          durationMs: r.duration_ms,
+          createdAt: r.created_at.toISOString(),
+          completedAt: r.completed_at ? r.completed_at.toISOString() : undefined,
+        });
+        roadmapsMap.set(r.task_id, list);
+      }
+
+      const deliverablesMap = new Map<string, TaskDeliverableRecord[]>();
+      for (const r of deliverablesRes.rows) {
+        const list = deliverablesMap.get(r.task_id) || [];
+        list.push({
+          id: r.id,
+          taskId: r.task_id,
+          deliverableType: r.deliverable_type,
+          content: r.content,
+          qaVerdict: r.qa_verdict,
+          qaNotes: r.qa_notes || undefined,
+          qaTestsRun: r.qa_tests_run,
+          testedBy: r.tested_by || undefined,
+          solverName: r.solver_name,
+          handoffChain: r.handoff_chain,
+          evaluationMetrics: r.evaluation_metrics,
+          createdAt: r.created_at.toISOString(),
+        });
+        deliverablesMap.set(r.task_id, list);
+      }
+
+      return tasks.map((t) => ({
+        ...t,
+        terminalLogs: logsMap.get(t.id) || t.terminalLogs || [],
+        roadmap: roadmapsMap.get(t.id) || t.roadmap || [],
+        deliverables: deliverablesMap.get(t.id) || t.deliverables || [],
+      }));
+    } catch (err) {
+      console.warn('[DbQueries] Could not populate task relational details:', err);
+      return tasks;
+    }
+  }
+
   public static async getTasks(limit = 20): Promise<Task[]> {
     const res = await dbPool.query(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT $1;`, [limit]);
-    return res.rows.map((row) => this.mapTask(row));
+    const baseTasks = res.rows.map((row) => this.mapTask(row));
+    return await this.populateTaskDetails(baseTasks);
   }
 
   public static async getTaskById(taskId: string): Promise<Task | null> {
     const res = await dbPool.query(`SELECT * FROM tasks WHERE id = $1;`, [taskId]);
-    return res.rows[0] ? this.mapTask(res.rows[0]) : null;
+    if (!res.rows[0]) return null;
+    const task = this.mapTask(res.rows[0]);
+    const populated = await this.populateTaskDetails([task]);
+    return populated[0] || task;
   }
 
   /**
@@ -147,7 +247,8 @@ export class DbQueries {
     sql += ` ORDER BY created_at DESC LIMIT $${params.length};`;
 
     const res = await dbPool.query(sql, params);
-    return res.rows.map((row) => this.mapTask(row));
+    const baseTasks = res.rows.map((row) => this.mapTask(row));
+    return await this.populateTaskDetails(baseTasks);
   }
 
   /**
@@ -157,19 +258,35 @@ export class DbQueries {
     if (!taskId) return null;
     const cleanId = taskId.trim().replace(/^[#@]/, '');
     let res = await dbPool.query(`SELECT * FROM tasks WHERE id = $1;`, [cleanId]);
-    if (res.rows[0]) return this.mapTask(res.rows[0]);
+    if (res.rows[0]) {
+      const task = this.mapTask(res.rows[0]);
+      const populated = await this.populateTaskDetails([task]);
+      return populated[0] || task;
+    }
 
     if (!cleanId.startsWith('task_')) {
       res = await dbPool.query(`SELECT * FROM tasks WHERE id = $1;`, [`task_${cleanId}`]);
-      if (res.rows[0]) return this.mapTask(res.rows[0]);
+      if (res.rows[0]) {
+        const task = this.mapTask(res.rows[0]);
+        const populated = await this.populateTaskDetails([task]);
+        return populated[0] || task;
+      }
     } else {
       const stripped = cleanId.replace(/^task_/, '');
       res = await dbPool.query(`SELECT * FROM tasks WHERE id = $1;`, [stripped]);
-      if (res.rows[0]) return this.mapTask(res.rows[0]);
+      if (res.rows[0]) {
+        const task = this.mapTask(res.rows[0]);
+        const populated = await this.populateTaskDetails([task]);
+        return populated[0] || task;
+      }
     }
 
     res = await dbPool.query(`SELECT * FROM tasks WHERE id ILIKE $1 LIMIT 1;`, [`%${cleanId}%`]);
-    if (res.rows[0]) return this.mapTask(res.rows[0]);
+    if (res.rows[0]) {
+      const task = this.mapTask(res.rows[0]);
+      const populated = await this.populateTaskDetails([task]);
+      return populated[0] || task;
+    }
 
     return null;
   }
@@ -201,6 +318,299 @@ export class DbQueries {
       metadata: row.metadata,
       createdAt: row.created_at.toISOString(),
     };
+  }
+
+  // 12. Terminal Tool Logs
+  public static async recordTerminalLog(log: ToolExecutionRecord, taskId: string): Promise<ToolExecutionRecord> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO task_terminal_logs (
+        id, task_id, tool_name, command, parameters, stdout, stderr,
+        exit_code, execution_time_ms, executed_by, success
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ON CONFLICT (id) DO UPDATE SET
+        stdout = EXCLUDED.stdout,
+        stderr = EXCLUDED.stderr,
+        exit_code = EXCLUDED.exit_code,
+        execution_time_ms = EXCLUDED.execution_time_ms,
+        success = EXCLUDED.success
+      RETURNING *;
+      `,
+      [
+        log.id,
+        taskId,
+        log.toolName,
+        log.command || null,
+        JSON.stringify(log.parameters || {}),
+        log.stdout || '',
+        log.stderr || '',
+        log.exitCode ?? 0,
+        log.executionTimeMs ?? 0,
+        log.executedBy,
+        log.success,
+      ]
+    );
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      toolName: row.tool_name,
+      command: row.command || undefined,
+      parameters: row.parameters,
+      stdout: row.stdout,
+      stderr: row.stderr,
+      exitCode: row.exit_code,
+      executionTimeMs: row.execution_time_ms,
+      executedBy: row.executed_by as AgentId,
+      success: row.success,
+      timestamp: row.created_at.toISOString(),
+    };
+  }
+
+  public static async getTerminalLogsByTaskId(taskId: string): Promise<ToolExecutionRecord[]> {
+    const res = await dbPool.query(
+      `SELECT * FROM task_terminal_logs WHERE task_id = $1 ORDER BY created_at ASC;`,
+      [taskId]
+    );
+    return res.rows.map((r) => ({
+      id: r.id,
+      toolName: r.tool_name,
+      command: r.command || undefined,
+      parameters: r.parameters,
+      stdout: r.stdout,
+      stderr: r.stderr,
+      exitCode: r.exit_code,
+      executionTimeMs: r.execution_time_ms,
+      executedBy: r.executed_by as AgentId,
+      success: r.success,
+      timestamp: r.created_at.toISOString(),
+    }));
+  }
+
+  // 13. Task Roadmaps
+  public static async recordRoadmapStep(step: Omit<TaskRoadmapRecord, 'createdAt'>): Promise<TaskRoadmapRecord> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO task_roadmaps (
+        id, task_id, step_number, stage, agent_id, title, description,
+        status, result_summary, tool_calls, duration_ms, completed_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        result_summary = EXCLUDED.result_summary,
+        tool_calls = EXCLUDED.tool_calls,
+        duration_ms = EXCLUDED.duration_ms,
+        completed_at = EXCLUDED.completed_at
+      RETURNING *;
+      `,
+      [
+        step.id,
+        step.taskId,
+        step.stepNumber,
+        step.stage,
+        step.agentId,
+        step.title,
+        step.description || null,
+        step.status,
+        step.resultSummary || null,
+        JSON.stringify(step.toolCalls || []),
+        step.durationMs || 0,
+        step.completedAt ? new Date(step.completedAt) : null,
+      ]
+    );
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      stepNumber: row.step_number,
+      stage: row.stage,
+      agentId: row.agent_id,
+      title: row.title,
+      description: row.description || undefined,
+      status: row.status,
+      resultSummary: row.result_summary || undefined,
+      toolCalls: row.tool_calls,
+      durationMs: row.duration_ms,
+      createdAt: row.created_at.toISOString(),
+      completedAt: row.completed_at ? row.completed_at.toISOString() : undefined,
+    };
+  }
+
+  public static async getRoadmapByTaskId(taskId: string): Promise<TaskRoadmapRecord[]> {
+    const res = await dbPool.query(
+      `SELECT * FROM task_roadmaps WHERE task_id = $1 ORDER BY step_number ASC;`,
+      [taskId]
+    );
+    return res.rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id,
+      stepNumber: r.step_number,
+      stage: r.stage,
+      agentId: r.agent_id,
+      title: r.title,
+      description: r.description || undefined,
+      status: r.status,
+      resultSummary: r.result_summary || undefined,
+      toolCalls: r.tool_calls,
+      durationMs: r.duration_ms,
+      createdAt: r.created_at.toISOString(),
+      completedAt: r.completed_at ? r.completed_at.toISOString() : undefined,
+    }));
+  }
+
+  // 14. Task Deliverables & Evaluations
+  public static async recordDeliverable(deliv: Omit<TaskDeliverableRecord, 'createdAt'>): Promise<TaskDeliverableRecord> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO task_deliverables (
+        id, task_id, deliverable_type, content, qa_verdict, qa_notes,
+        qa_tests_run, tested_by, solver_name, handoff_chain, evaluation_metrics
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *;
+      `,
+      [
+        deliv.id,
+        deliv.taskId,
+        deliv.deliverableType || 'final_solution',
+        deliv.content,
+        deliv.qaVerdict || 'APPROVED',
+        deliv.qaNotes || null,
+        JSON.stringify(deliv.qaTestsRun || []),
+        deliv.testedBy || null,
+        deliv.solverName,
+        JSON.stringify(deliv.handoffChain || []),
+        JSON.stringify(deliv.evaluationMetrics || {}),
+      ]
+    );
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      deliverableType: row.deliverable_type,
+      content: row.content,
+      qaVerdict: row.qa_verdict,
+      qaNotes: row.qa_notes || undefined,
+      qaTestsRun: row.qa_tests_run,
+      testedBy: row.tested_by || undefined,
+      solverName: row.solver_name,
+      handoffChain: row.handoff_chain,
+      evaluationMetrics: row.evaluation_metrics,
+      createdAt: row.created_at.toISOString(),
+    };
+  }
+
+  public static async getDeliverablesByTaskId(taskId: string): Promise<TaskDeliverableRecord[]> {
+    const res = await dbPool.query(
+      `SELECT * FROM task_deliverables WHERE task_id = $1 ORDER BY created_at DESC;`,
+      [taskId]
+    );
+    return res.rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id,
+      deliverableType: r.deliverable_type,
+      content: r.content,
+      qaVerdict: r.qa_verdict,
+      qaNotes: r.qa_notes || undefined,
+      qaTestsRun: r.qa_tests_run,
+      testedBy: r.tested_by || undefined,
+      solverName: r.solver_name,
+      handoffChain: r.handoff_chain,
+      evaluationMetrics: r.evaluation_metrics,
+      createdAt: r.created_at.toISOString(),
+    }));
+  }
+
+  // 15. Agent Learning Patterns (pgvector-enabled)
+  public static async recordLearningPattern(pattern: Omit<AgentLearningPattern, 'createdAt' | 'updatedAt'>): Promise<AgentLearningPattern> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO agent_learning_patterns (
+        id, pattern_type, title, intent_category, context_summary,
+        pattern_content, task_id, agent_id, success_rate, application_count,
+        metadata
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ON CONFLICT (id) DO UPDATE SET
+        pattern_content = EXCLUDED.pattern_content,
+        success_rate = EXCLUDED.success_rate,
+        application_count = agent_learning_patterns.application_count + 1,
+        updated_at = NOW()
+      RETURNING *;
+      `,
+      [
+        pattern.id,
+        pattern.patternType,
+        pattern.title,
+        pattern.intentCategory || null,
+        pattern.contextSummary,
+        pattern.patternContent,
+        pattern.taskId || null,
+        pattern.agentId,
+        pattern.successRate || 1.0,
+        pattern.applicationCount || 1,
+        JSON.stringify(pattern.metadata || {}),
+      ]
+    );
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      patternType: row.pattern_type as AgentLearningPattern['patternType'],
+      title: row.title,
+      intentCategory: row.intent_category || undefined,
+      contextSummary: row.context_summary,
+      patternContent: row.pattern_content,
+      taskId: row.task_id || undefined,
+      agentId: row.agent_id,
+      successRate: row.success_rate,
+      applicationCount: row.application_count,
+      metadata: row.metadata,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    };
+  }
+
+  public static async getLearningPatterns(options?: {
+    patternType?: string;
+    intentCategory?: string;
+    agentId?: string;
+    limit?: number;
+  }): Promise<AgentLearningPattern[]> {
+    let sql = `SELECT * FROM agent_learning_patterns WHERE 1=1`;
+    const params: unknown[] = [];
+    if (options?.patternType) {
+      params.push(options.patternType);
+      sql += ` AND pattern_type = $${params.length}`;
+    }
+    if (options?.intentCategory) {
+      params.push(options.intentCategory);
+      sql += ` AND intent_category = $${params.length}`;
+    }
+    if (options?.agentId) {
+      params.push(options.agentId);
+      sql += ` AND agent_id = $${params.length}`;
+    }
+    const limit = Math.min(options?.limit || 20, 50);
+    params.push(limit);
+    sql += ` ORDER BY updated_at DESC LIMIT $${params.length};`;
+
+    const res = await dbPool.query(sql, params);
+    return res.rows.map((row) => ({
+      id: row.id,
+      patternType: row.pattern_type as AgentLearningPattern['patternType'],
+      title: row.title,
+      intentCategory: row.intent_category || undefined,
+      contextSummary: row.context_summary,
+      patternContent: row.pattern_content,
+      taskId: row.task_id || undefined,
+      agentId: row.agent_id,
+      successRate: row.success_rate,
+      applicationCount: row.application_count,
+      metadata: row.metadata,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    }));
   }
 
   public static async getRecentActivities(limit = 50): Promise<TaskActivity[]> {
