@@ -10,6 +10,7 @@ import {
   type ToolExecutionRecord,
 } from '@agent-office/shared';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
+import { TaskHistoryModal } from './TaskHistoryModal.js';
 
 interface TaskPanelProps {
   onOpenActivityLog?: () => void;
@@ -45,6 +46,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
   const [clarificationReply, setClarificationReply] = useState('');
   const [isClarifying, setIsClarifying] = useState(false);
   const [deliverableCopied, setDeliverableCopied] = useState(false);
+  const [isTaskHistoryOpen, setIsTaskHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal editor states
@@ -243,9 +245,18 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
           <span>▶</span> TASK DISPATCH &amp; AUTONOMOUS ENGINE
         </h2>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] font-pixel-mono text-[#869184] bg-[#0D110F] border border-[#465047] px-1.5 py-0.5">
-            {tasks.length} TASKS
-          </span>
+          <button
+            type="button"
+            onClick={() => setIsTaskHistoryOpen(!isTaskHistoryOpen)}
+            className={`pixel-btn text-[10px] py-0.5 px-2 flex-1 sm:flex-none text-center justify-center cursor-pointer transition-colors ${
+              isTaskHistoryOpen
+                ? 'bg-[#1B211D] border-[#CCF12B] text-[#CCF12B]'
+                : 'pixel-btn-ghost'
+            }`}
+            title="View task history, roadmap flows, and terminal logs"
+          >
+            TASKS ({tasks.length})
+          </button>
         </div>
       </div>
 
@@ -943,6 +954,15 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ onOpenActivityLog }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Task History & Execution Records Modal */}
+      {isTaskHistoryOpen && (
+        <TaskHistoryModal
+          isOpen={isTaskHistoryOpen}
+          onClose={() => setIsTaskHistoryOpen(false)}
+          onSelectTask={(id) => setActiveTaskId(id)}
+        />
       )}
     </div>
   );
