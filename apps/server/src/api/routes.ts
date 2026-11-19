@@ -477,12 +477,13 @@ export function registerRoutes(
 
     // Trigger agent reply asynchronously
     const target = parsed.data.recipientAgentId || AGENT_IDS.LEADER;
+    const attachments = (parsed.data as any).attachments;
     setTimeout(async () => {
       try {
         if (adkOfficeService) {
-          await adkOfficeService.handleBossMessage(parsed.data.text, target, undefined, id);
+          await adkOfficeService.handleBossMessage(parsed.data.text, target, attachments, id);
         } else if (chatAgentService) {
-          await chatAgentService.handleBossMessage(parsed.data.text, target, undefined, id);
+          await chatAgentService.handleBossMessage(parsed.data.text, target, attachments, id);
         }
       } catch (err: unknown) {
         console.error('[API Chat] Error handling message:', err);

@@ -5,6 +5,7 @@ import {
   AGENT_CONFIGS,
   AGENT_IDS,
   type AgentId,
+  type TaskAttachment,
   createTaskSchema,
 } from '@agent-office/shared';
 import type { OfficeWorkflowOrchestrator } from '../graph/workflow.js';
@@ -235,6 +236,7 @@ export function registerInternalRoutes(
       text: string;
       targetAgentId?: string;
       sessionId?: string;
+      attachments?: TaskAttachment[];
       context?: InternalRequestContext;
     };
 
@@ -254,17 +256,19 @@ export function registerInternalRoutes(
       text: body.text,
       type: 'dialogue',
       mentionedAgents: [target],
+      attachments: body.attachments || [],
     });
 
     if (socketBridge) {
       socketBridge.broadcastChat(bossMsg);
     }
 
+    let directReplyText = '';
     try {
       if (adkOfficeService) {
-        await adkOfficeService.handleBossMessage(body.text, target, undefined, sessionId);
+        directReplyText = await adkOfficeService.handleBossMessage(body.text, target, body.attachments, sessionId);
       } else if (chatAgentService) {
-        await chatAgentService.handleBossMessage(body.text, target, undefined, sessionId);
+        await chatAgentService.handleBossMessage(body.text, target, body.attachments, sessionId);
       }
     } catch (e) {
       console.error('[Internal Chat] Error processing message:', e);
@@ -278,7 +282,7 @@ export function registerInternalRoutes(
       success: true,
       sender: target,
       agentName: AGENT_CONFIGS[target]?.name || 'Zen (Leader)',
-      reply: agentReply?.text || 'Pesan diterima dan sedang diproses.',
+      reply: directReplyText || agentReply?.text || 'Pesan diterima dan sedang diproses.',
     };
   });
 
