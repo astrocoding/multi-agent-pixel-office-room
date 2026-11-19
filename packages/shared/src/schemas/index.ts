@@ -1,28 +1,11 @@
 import { z } from 'zod';
 import { AGENT_IDS, AGENT_STATES, ROOM_EVENTS, TASK_STATES } from '../constants/index.js';
+import { agentIdSchema, taskAttachmentSchema } from './adaptiveOrchestrationSchemas.js';
 
-export const agentIdSchema = z.enum([
-  AGENT_IDS.LEADER,
-  AGENT_IDS.RESEARCH,
-  AGENT_IDS.ENGINEERING,
-  AGENT_IDS.AUTOMATION,
-  AGENT_IDS.QA,
-  AGENT_IDS.MEMORY,
-]);
-
+export { agentIdSchema, taskAttachmentSchema };
 export const agentStateSchema = z.enum(AGENT_STATES);
 export const taskStateSchema = z.enum(TASK_STATES);
 export const roomEventSchema = z.nativeEnum(ROOM_EVENTS);
-
-export const taskAttachmentSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  type: z.enum(['image', 'code', 'document', 'other']),
-  mimeType: z.string(),
-  size: z.number(),
-  content: z.string().optional(),
-  base64Data: z.string().optional(),
-});
 
 export const createTaskSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters').max(120),
@@ -33,6 +16,7 @@ export const createTaskSchema = z.object({
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+export * from './adaptiveOrchestrationSchemas.js';
 
 export const updateTaskStatusSchema = z.object({
   taskId: z.string().uuid(),

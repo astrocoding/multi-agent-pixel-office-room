@@ -121,6 +121,129 @@ export function registerRoutes(
     return { success: true, message: 'Clarification received and task resumed' };
   });
 
+  server.post('/api/tasks/:id/approve', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { decisionReason?: string };
+    await orchestrator.resumeWithApproval(id, true, body?.decisionReason);
+    return { success: true, message: 'Approval received and task resumed' };
+  });
+
+  server.post('/api/tasks/:id/reject', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { decisionReason?: string };
+    await orchestrator.resumeWithApproval(id, false, body?.decisionReason);
+    return { success: true, message: 'Rejection received and task aborted' };
+  });
+
+  // Governance & Scoped Feedback API
+  server.post('/api/governance/feedback', async (req, reply) => {
+    const body = req.body as any;
+    if (!body?.idempotencyKey || !body?.feedbackType || !body?.targetType || !body?.targetIdentifier || !body?.details) {
+      return reply.status(400).send({ success: false, error: 'Missing required feedback fields' });
+    }
+
+    const res = await memoryService.recordFeedback({
+      idempotencyKey: body.idempotencyKey,
+      taskId: body.taskId,
+      actorId: body.actorId || 'boss_web',
+      projectScope: body.projectScope || 'default',
+      feedbackType: body.feedbackType,
+      targetType: body.targetType,
+      targetIdentifier: body.targetIdentifier,
+      rating: body.rating,
+      details: body.details,
+      evidence: body.evidence,
+    });
+
+    return {
+      success: true,
+      feedback: res.feedback,
+      deduplicated: res.deduplicated,
+      proposalGenerated: !!res.proposal,
+      proposalId: res.proposal?.id,
+    };
+  });
+
+  server.get('/api/governance/proposals', async (req) => {
+    const query = req.query as { status?: string };
+    const proposals = await DbQueries.listGovernanceProposals(query.status);
+    return { success: true, count: proposals.length, proposals };
+  });
+
+  server.post('/api/governance/proposals/:id/review', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { decision?: 'approve' | 'reject'; reason?: string; reviewerRole?: string };
+
+    const reviewerRole = body.reviewerRole || 'owner';
+    if (reviewerRole !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to review improvement proposals',
+      });
+    }
+
+    try {
+      const reviewed = await memoryService.reviewProposal({
+        proposalId: id,
+        reviewerId: 'boss_web',
+        reviewerRole: 'owner',
+        decision: body.decision || 'approve',
+        reason: body.reason || 'Reviewed via Web UI',
+      });
+
+      return { success: true, proposal: reviewed };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  server.post('/api/governance/proposals/:id/publish', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { currentVersion?: string; publisherRole?: string };
+
+    const publisherRole = body.publisherRole || 'owner';
+    if (publisherRole !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to publish improvement proposals',
+      });
+    }
+
+    try {
+      const published = await memoryService.publishProposal(id, 'owner', body.currentVersion || '1.0.0');
+      return { success: true, ...published };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  server.post('/api/governance/proposals/:id/rollback', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { reason?: string; operatorRole?: string };
+
+    const operatorRole = body.operatorRole || 'owner';
+    if (operatorRole !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to rollback improvement proposals',
+      });
+    }
+
+    try {
+      const rolledBack = await memoryService.rollbackProposal(id, 'owner', body.reason || 'Web rollback requested');
+      return { success: true, ...rolledBack };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  server.delete('/api/governance/memories/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { actorId?: string; role?: string };
+    const deleted = await memoryService.deleteScopedMemory(id, body?.actorId || 'boss', body?.role || 'owner');
+    return { success: deleted, memoryId: id };
+  });
+
   // Workspace Files
   server.get('/api/workspace/files', async (req) => {
     const query = req.query as { dir?: string };

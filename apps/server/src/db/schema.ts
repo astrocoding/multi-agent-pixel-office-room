@@ -112,9 +112,25 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS access_count INT DEFAULT 0;
       ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS last_recalled_at TIMESTAMPTZ;
 
+      -- Phase 4 Scoped Memory Governance Columns
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS actor_id VARCHAR(64) DEFAULT 'boss';
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'default';
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'project';
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS verification_state VARCHAR(32) DEFAULT 'observed_fact';
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS confidence REAL DEFAULT 1.0;
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS source_provenance JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS retention_policy VARCHAR(32) DEFAULT 'permanent';
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS superseded_by VARCHAR(64);
+      ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
       CREATE INDEX IF NOT EXISTS idx_agent_memories_task_id ON agent_memories(task_id);
       CREATE INDEX IF NOT EXISTS idx_agent_memories_scope ON agent_memories(project_scope);
       CREATE INDEX IF NOT EXISTS idx_agent_memories_agent_created ON agent_memories(agent_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_memories_actor ON agent_memories(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_memories_tenant ON agent_memories(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_memories_visibility ON agent_memories(visibility);
+      CREATE INDEX IF NOT EXISTS idx_agent_memories_active ON agent_memories(deleted_at, expires_at);
     `);
 
     // 5. Agent Runtime States table
@@ -405,6 +421,159 @@ export async function initDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_learning_patterns_type ON agent_learning_patterns(pattern_type);
       CREATE INDEX IF NOT EXISTS idx_learning_patterns_intent ON agent_learning_patterns(intent_category);
       CREATE INDEX IF NOT EXISTS idx_learning_patterns_task ON agent_learning_patterns(task_id);
+    `);
+
+    // 16. Skill Registry (Phase 1 RAG: Versioned, approved-only markdown skill catalog)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS skill_registry (
+        id VARCHAR(64) PRIMARY KEY,
+        slug VARCHAR(120) NOT NULL UNIQUE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+        entrypoint_path TEXT NOT NULL,
+        "references" JSONB DEFAULT '[]'::jsonb,
+        triggers JSONB DEFAULT '[]'::jsonb,
+        roles JSONB DEFAULT '[]'::jsonb,
+        languages JSONB DEFAULT '[]'::jsonb,
+        source_trust VARCHAR(64) NOT NULL DEFAULT 'unreviewed_proposal',
+        status VARCHAR(32) NOT NULL DEFAULT 'proposed',
+        approved_by VARCHAR(64),
+        content_hash VARCHAR(64) NOT NULL,
+        active_version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_skill_registry_slug ON skill_registry(slug);
+      CREATE INDEX IF NOT EXISTS idx_skill_registry_status ON skill_registry(status);
+    `);
+
+    // 17. Knowledge Sources (Phase 1 RAG: Canonical documents, skills, references, and specs)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS knowledge_sources (
+        id VARCHAR(64) PRIMARY KEY,
+        source_type VARCHAR(64) NOT NULL DEFAULT 'skill',
+        canonical_path TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+        status VARCHAR(32) NOT NULL DEFAULT 'proposed',
+        trust_level VARCHAR(64) NOT NULL DEFAULT 'unreviewed_proposal',
+        project_id VARCHAR(120) DEFAULT 'default',
+        owner_id VARCHAR(64) DEFAULT 'system',
+        acl_policy JSONB DEFAULT '{"visibility": "internal"}'::jsonb,
+        language VARCHAR(32) DEFAULT 'id',
+        content_hash VARCHAR(64) NOT NULL,
+        embedding_model_id VARCHAR(120),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        deleted_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_knowledge_sources_path ON knowledge_sources(canonical_path);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_sources_status ON knowledge_sources(status);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_sources_type ON knowledge_sources(source_type);
+    `);
+
+    // 18. Knowledge Chunks (Phase 1 RAG: Heading-aware Markdown chunks with hash & token count)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+          id VARCHAR(64) PRIMARY KEY,
+          source_id VARCHAR(64) NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+          parent_section_id VARCHAR(64),
+          heading_path TEXT NOT NULL,
+          heading_level INT NOT NULL DEFAULT 1,
+          start_line INT NOT NULL,
+          end_line INT NOT NULL,
+          content TEXT NOT NULL,
+          token_count INT NOT NULL DEFAULT 0,
+          chunk_hash VARCHAR(64) NOT NULL,
+          embedding vector(768),
+          search_vector tsvector,
+          visibility VARCHAR(32) DEFAULT 'internal',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+    } catch {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+          id VARCHAR(64) PRIMARY KEY,
+          source_id VARCHAR(64) NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+          parent_section_id VARCHAR(64),
+          heading_path TEXT NOT NULL,
+          heading_level INT NOT NULL DEFAULT 1,
+          start_line INT NOT NULL,
+          end_line INT NOT NULL,
+          content TEXT NOT NULL,
+          token_count INT NOT NULL DEFAULT 0,
+          chunk_hash VARCHAR(64) NOT NULL,
+          embedding JSONB,
+          search_vector tsvector,
+          visibility VARCHAR(32) DEFAULT 'internal',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+    }
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_id);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_hash ON knowledge_chunks(chunk_hash);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_parent ON knowledge_chunks(parent_section_id);
+    `);
+
+    // 14. Phase 4 Feedback & Governed Improvement Proposals
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS governance_feedbacks (
+        id VARCHAR(64) PRIMARY KEY,
+        idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+        task_id VARCHAR(64),
+        actor_id VARCHAR(64) NOT NULL,
+        project_scope VARCHAR(120) DEFAULT 'default',
+        feedback_type VARCHAR(32) NOT NULL,
+        target_type VARCHAR(32) NOT NULL,
+        target_identifier TEXT NOT NULL,
+        rating INT DEFAULT 0,
+        details TEXT NOT NULL,
+        evidence JSONB DEFAULT '{}'::jsonb,
+        processed BOOLEAN DEFAULT false,
+        proposal_id VARCHAR(64),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gov_feedbacks_task ON governance_feedbacks(task_id);
+      CREATE INDEX IF NOT EXISTS idx_gov_feedbacks_target ON governance_feedbacks(target_type, target_identifier);
+      CREATE INDEX IF NOT EXISTS idx_gov_feedbacks_actor ON governance_feedbacks(actor_id);
+
+      CREATE TABLE IF NOT EXISTS governance_proposals (
+        id VARCHAR(64) PRIMARY KEY,
+        target_skill_id VARCHAR(120) NOT NULL,
+        proposal_type VARCHAR(32) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        justification TEXT NOT NULL,
+        linked_feedback_ids JSONB DEFAULT '[]'::jsonb,
+        before_diff TEXT NOT NULL,
+        after_diff TEXT NOT NULL,
+        evaluation_score REAL DEFAULT 0.0,
+        evaluation_metrics JSONB DEFAULT '{}'::jsonb,
+        security_audit_status VARCHAR(32) DEFAULT 'pending',
+        security_notes TEXT,
+        status VARCHAR(32) DEFAULT 'pending_review',
+        proposed_by VARCHAR(64) NOT NULL,
+        reviewed_by VARCHAR(64),
+        decision_reason TEXT,
+        published_version VARCHAR(32),
+        rollback_payload JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        published_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_gov_proposals_status ON governance_proposals(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_gov_proposals_target ON governance_proposals(target_skill_id);
     `);
 
     // Seed default chat session if table is empty

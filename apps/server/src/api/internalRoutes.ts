@@ -325,6 +325,12 @@ export function registerInternalRoutes(
       body?.decisionReason || 'Approved via Telegram'
     );
 
+    if (approval.taskId) {
+      orchestrator.resumeWithApproval(approval.taskId, true, body?.decisionReason).catch((err) => {
+        console.error('[InternalRoutes] Error resuming task with approval:', err);
+      });
+    }
+
     if (socketBridge) {
       socketBridge.broadcastSystemNotification('info', `Approval ${id} approved by Boss.`);
     }
@@ -368,6 +374,12 @@ export function registerInternalRoutes(
       body.context?.actorId || 'boss_telegram',
       body?.decisionReason || 'Rejected via Telegram'
     );
+
+    if (approval.taskId) {
+      orchestrator.resumeWithApproval(approval.taskId, false, body?.decisionReason).catch((err) => {
+        console.error('[InternalRoutes] Error resuming task with rejection:', err);
+      });
+    }
 
     if (socketBridge) {
       socketBridge.broadcastSystemNotification('warn', `Approval ${id} rejected by Boss.`);
@@ -472,5 +484,120 @@ export function registerInternalRoutes(
         allowedChatTypes: ['private'],
       },
     };
+  });
+
+  // 16. Governance: Submit Feedback
+  server.post('/api/internal/governance/feedback', async (req, reply) => {
+    const body = req.body as any;
+    if (!body?.idempotencyKey || !body?.feedbackType || !body?.targetType || !body?.targetIdentifier || !body?.details) {
+      return reply.status(400).send({ success: false, error: 'Missing required feedback fields' });
+    }
+
+    const res = await memoryService.recordFeedback({
+      idempotencyKey: body.idempotencyKey,
+      taskId: body.taskId,
+      actorId: body.actorId || 'boss_telegram',
+      projectScope: body.projectScope || 'default',
+      feedbackType: body.feedbackType,
+      targetType: body.targetType,
+      targetIdentifier: body.targetIdentifier,
+      rating: body.rating,
+      details: body.details,
+      evidence: body.evidence,
+    });
+
+    return {
+      success: true,
+      feedback: res.feedback,
+      deduplicated: res.deduplicated,
+      proposalGenerated: !!res.proposal,
+      proposalId: res.proposal?.id,
+    };
+  });
+
+  // 17. Governance: List Proposals
+  server.get('/api/internal/governance/proposals', async (req) => {
+    const query = req.query as { status?: string };
+    const proposals = await DbQueries.listGovernanceProposals(query.status);
+    return { success: true, count: proposals.length, proposals };
+  });
+
+  // 18. Governance: Review Proposal (Owner Only)
+  server.post('/api/internal/governance/proposals/:id/review', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { decision?: 'approve' | 'reject'; reason?: string; context?: InternalRequestContext };
+
+    if (body.context?.role !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to review improvement proposals',
+      });
+    }
+
+    try {
+      const reviewed = await memoryService.reviewProposal({
+        proposalId: id,
+        reviewerId: body.context?.actorId || 'boss',
+        reviewerRole: 'owner',
+        decision: body.decision || 'approve',
+        reason: body.reason || 'Approved via administrative command',
+      });
+
+      return { success: true, proposal: reviewed };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // 19. Governance: Publish Proposal (Owner Only)
+  server.post('/api/internal/governance/proposals/:id/publish', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { currentVersion?: string; context?: InternalRequestContext };
+
+    if (body.context?.role !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to publish improvement proposals',
+      });
+    }
+
+    try {
+      const published = await memoryService.publishProposal(id, 'owner', body.currentVersion || '1.0.0');
+      return { success: true, ...published };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // 20. Governance: Rollback Proposal (Owner Only)
+  server.post('/api/internal/governance/proposals/:id/rollback', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { reason?: string; context?: InternalRequestContext };
+
+    if (body.context?.role !== 'owner') {
+      return reply.status(403).send({
+        success: false,
+        error: 'Forbidden: Only Boss / OWNER is authorized to rollback improvement proposals',
+      });
+    }
+
+    try {
+      const rolledBack = await memoryService.rollbackProposal(id, 'owner', body.reason || 'Manual rollback initiated');
+      return { success: true, ...rolledBack };
+    } catch (err: unknown) {
+      return reply.status(400).send({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // 21. Governance: Delete Scoped Memory
+  server.delete('/api/internal/governance/memories/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { context?: InternalRequestContext };
+
+    const actorId = body.context?.actorId || 'boss';
+    const role = body.context?.role || 'member';
+
+    const deleted = await memoryService.deleteScopedMemory(id, actorId, role);
+    return { success: deleted, memoryId: id };
   });
 }

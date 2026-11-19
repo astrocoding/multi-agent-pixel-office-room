@@ -1,6 +1,13 @@
 import { dbPool } from './connection.js';
 import { QuerySafety } from '../security/querySafety.js';
 import type {
+  ScopedMemoryRecord,
+  FeedbackRecord,
+  ImprovementProposal,
+  MemoryAccessScope,
+  MemoryCategory,
+} from '@agent-office/ai';
+import type {
   AgentId,
   AgentRuntimeState,
   ChatMessage,
@@ -1659,6 +1666,370 @@ export class DbQueries {
       plan: (row.plan as Task['plan']) || null,
       createdAt: (row.created_at as Date).toISOString(),
       updatedAt: (row.updated_at as Date).toISOString(),
+    };
+  }
+
+  // Phase 4 Scoped Memory & Data Governance
+  public static async insertScopedMemory(
+    record: ScopedMemoryRecord,
+    embedding?: number[]
+  ): Promise<ScopedMemoryRecord> {
+    const embeddingStr = embedding ? `[${embedding.join(',')}]` : null;
+    const res = await dbPool.query(
+      `
+      INSERT INTO agent_memories (
+        id, agent_id, memory_type, content, summary, embedding, metadata,
+        importance, project_scope, intent_category, task_id,
+        actor_id, tenant_id, visibility, verification_state, confidence,
+        source_provenance, retention_policy, expires_at, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      RETURNING *;
+    `,
+      [
+        record.id,
+        'agent_memory',
+        record.category,
+        record.content,
+        record.summary || null,
+        embeddingStr,
+        JSON.stringify(record.metadata || {}),
+        Math.round(record.confidence * 10),
+        record.projectScope,
+        record.category,
+        record.sourceProvenance?.taskId || null,
+        record.actorId,
+        record.tenantId,
+        record.visibility,
+        record.verificationState,
+        record.confidence,
+        JSON.stringify(record.sourceProvenance || {}),
+        record.retentionPolicy,
+        record.expiresAt ? new Date(record.expiresAt) : null,
+        new Date(record.createdAt),
+        new Date(record.updatedAt),
+      ]
+    );
+
+    return this.mapScopedMemory(res.rows[0]);
+  }
+
+  public static async searchScopedMemories(
+    queryEmbedding: number[] | null,
+    scope: MemoryAccessScope,
+    options?: { category?: MemoryCategory; limit?: number; minSimilarity?: number }
+  ): Promise<ScopedMemoryRecord[]> {
+    const limit = options?.limit || 10;
+    const params: unknown[] = [scope.tenantId || 'default'];
+    let sql = `
+      SELECT *,
+             ${queryEmbedding ? `1 - (embedding <=> $${params.length + 1}::vector)` : '1.0'} as similarity
+      FROM agent_memories
+      WHERE tenant_id = $1
+        AND deleted_at IS NULL
+        AND (expires_at IS NULL OR expires_at > NOW())
+        AND superseded_by IS NULL
+    `;
+
+    if (queryEmbedding) {
+      params.push(`[${queryEmbedding.join(',')}]`);
+    }
+
+    if (options?.category) {
+      params.push(options.category);
+      sql += ` AND memory_type = $${params.length}`;
+    }
+
+    if (scope.role !== 'owner') {
+      params.push(scope.actorId);
+      const actorParamIdx = params.length;
+      params.push(scope.projectScope);
+      const projectParamIdx = params.length;
+
+      sql += ` AND (
+        visibility = 'public'
+        OR (visibility = 'internal')
+        OR (visibility = 'project' AND (project_scope = $${projectParamIdx} OR project_scope = 'default'))
+        OR (visibility = 'private' AND actor_id = $${actorParamIdx})
+      )`;
+    }
+
+    if (queryEmbedding) {
+      sql += ` ORDER BY embedding <=> $2::vector ASC`;
+    } else {
+      sql += ` ORDER BY created_at DESC`;
+    }
+
+    params.push(limit);
+    sql += ` LIMIT $${params.length};`;
+
+    try {
+      const res = await dbPool.query(sql, params);
+      return res.rows.map((r) => this.mapScopedMemory(r));
+    } catch {
+      return [];
+    }
+  }
+
+  public static async supersedeMemory(oldId: string, newId: string): Promise<boolean> {
+    try {
+      const res = await dbPool.query(
+        `UPDATE agent_memories SET superseded_by = $2, updated_at = NOW() WHERE id = $1 RETURNING id;`,
+        [oldId, newId]
+      );
+      return (res.rowCount ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async deleteScopedMemory(id: string, actorId: string, isOwner = false): Promise<boolean> {
+    try {
+      const res = isOwner
+        ? await dbPool.query(`UPDATE agent_memories SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id;`, [id])
+        : await dbPool.query(`UPDATE agent_memories SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND actor_id = $2 RETURNING id;`, [id, actorId]);
+      return (res.rowCount ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // Phase 4 Governance Feedback & Proposals
+  public static async insertGovernanceFeedback(feedback: FeedbackRecord): Promise<FeedbackRecord> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO governance_feedbacks (
+        id, idempotency_key, task_id, actor_id, project_scope,
+        feedback_type, target_type, target_identifier, rating,
+        details, evidence, processed, proposal_id, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (idempotency_key) DO UPDATE SET processed = EXCLUDED.processed
+      RETURNING *;
+    `,
+      [
+        feedback.id,
+        feedback.idempotencyKey,
+        feedback.taskId || null,
+        feedback.actorId,
+        feedback.projectScope,
+        feedback.feedbackType,
+        feedback.targetType,
+        feedback.targetIdentifier,
+        feedback.rating,
+        feedback.details,
+        JSON.stringify(feedback.evidence || {}),
+        feedback.processed,
+        feedback.proposalId || null,
+        new Date(feedback.createdAt),
+      ]
+    );
+
+    return this.mapGovernanceFeedback(res.rows[0]);
+  }
+
+  public static async getGovernanceFeedbackByIdempotencyKey(key: string): Promise<FeedbackRecord | null> {
+    try {
+      const res = await dbPool.query(`SELECT * FROM governance_feedbacks WHERE idempotency_key = $1;`, [key]);
+      return res.rows[0] ? this.mapGovernanceFeedback(res.rows[0]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public static async listGovernanceFeedbacks(options?: {
+    taskId?: string;
+    processed?: boolean;
+    limit?: number;
+  }): Promise<FeedbackRecord[]> {
+    try {
+      let sql = `SELECT * FROM governance_feedbacks WHERE 1=1`;
+      const params: unknown[] = [];
+
+      if (options?.taskId) {
+        params.push(options.taskId);
+        sql += ` AND task_id = $${params.length}`;
+      }
+
+      if (options?.processed !== undefined) {
+        params.push(options.processed);
+        sql += ` AND processed = $${params.length}`;
+      }
+
+      sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1};`;
+      params.push(options?.limit || 20);
+
+      const res = await dbPool.query(sql, params);
+      return res.rows.map((r) => this.mapGovernanceFeedback(r));
+    } catch {
+      return [];
+    }
+  }
+
+  public static async insertGovernanceProposal(proposal: ImprovementProposal): Promise<ImprovementProposal> {
+    const res = await dbPool.query(
+      `
+      INSERT INTO governance_proposals (
+        id, target_skill_id, proposal_type, title, description, justification,
+        linked_feedback_ids, before_diff, after_diff, evaluation_score,
+        evaluation_metrics, security_audit_status, security_notes, status,
+        proposed_by, reviewed_by, decision_reason, published_version,
+        rollback_payload, created_at, updated_at, published_at, expires_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+      RETURNING *;
+    `,
+      [
+        proposal.id,
+        proposal.targetSkillId,
+        proposal.proposalType,
+        proposal.title,
+        proposal.description,
+        proposal.justification,
+        JSON.stringify(proposal.linkedFeedbackIds),
+        proposal.beforeDiff,
+        proposal.afterDiff,
+        proposal.evaluationScore,
+        JSON.stringify(proposal.evaluationMetrics),
+        proposal.securityAuditStatus,
+        proposal.securityNotes || null,
+        proposal.status,
+        proposal.proposedBy,
+        proposal.reviewedBy || null,
+        proposal.decisionReason || null,
+        proposal.publishedVersion || null,
+        JSON.stringify(proposal.rollbackPayload),
+        new Date(proposal.createdAt),
+        new Date(proposal.updatedAt),
+        proposal.publishedAt ? new Date(proposal.publishedAt) : null,
+        proposal.expiresAt ? new Date(proposal.expiresAt) : null,
+      ]
+    );
+
+    return this.mapGovernanceProposal(res.rows[0]);
+  }
+
+  public static async getGovernanceProposalById(id: string): Promise<ImprovementProposal | null> {
+    try {
+      const res = await dbPool.query(`SELECT * FROM governance_proposals WHERE id = $1;`, [id]);
+      return res.rows[0] ? this.mapGovernanceProposal(res.rows[0]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public static async listGovernanceProposals(status?: string): Promise<ImprovementProposal[]> {
+    try {
+      let sql = `SELECT * FROM governance_proposals`;
+      const params: unknown[] = [];
+      if (status) {
+        params.push(status);
+        sql += ` WHERE status = $1`;
+      }
+      sql += ` ORDER BY created_at DESC;`;
+
+      const res = await dbPool.query(sql, params);
+      return res.rows.map((r) => this.mapGovernanceProposal(r));
+    } catch {
+      return [];
+    }
+  }
+
+  public static async updateGovernanceProposal(proposal: ImprovementProposal): Promise<ImprovementProposal> {
+    const res = await dbPool.query(
+      `
+      UPDATE governance_proposals
+      SET status = $2,
+          reviewed_by = $3,
+          decision_reason = $4,
+          published_version = $5,
+          rollback_payload = $6,
+          published_at = $7,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `,
+      [
+        proposal.id,
+        proposal.status,
+        proposal.reviewedBy || null,
+        proposal.decisionReason || null,
+        proposal.publishedVersion || null,
+        JSON.stringify(proposal.rollbackPayload),
+        proposal.publishedAt ? new Date(proposal.publishedAt) : null,
+      ]
+    );
+
+    return this.mapGovernanceProposal(res.rows[0]);
+  }
+
+  private static mapScopedMemory(row: any): ScopedMemoryRecord {
+    return {
+      id: row.id,
+      category: row.memory_type || 'episodic',
+      content: row.content,
+      summary: row.summary || undefined,
+      actorId: row.actor_id || 'boss',
+      projectScope: row.project_scope || 'default',
+      tenantId: row.tenant_id || 'default',
+      visibility: row.visibility || 'project',
+      verificationState: row.verification_state || 'observed_fact',
+      confidence: Number(row.confidence ?? 1.0),
+      sourceProvenance: typeof row.source_provenance === 'string' ? JSON.parse(row.source_provenance) : row.source_provenance || {},
+      retentionPolicy: row.retention_policy || 'permanent',
+      expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+      supersededBy: row.superseded_by || null,
+      deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+      metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata || {},
+      createdAt: new Date(row.created_at).toISOString(),
+      updatedAt: new Date(row.updated_at).toISOString(),
+    };
+  }
+
+  private static mapGovernanceFeedback(row: any): FeedbackRecord {
+    return {
+      id: row.id,
+      idempotencyKey: row.idempotency_key,
+      taskId: row.task_id || undefined,
+      actorId: row.actor_id,
+      projectScope: row.project_scope || 'default',
+      feedbackType: row.feedback_type,
+      targetType: row.target_type,
+      targetIdentifier: row.target_identifier,
+      rating: Number(row.rating ?? 0),
+      details: row.details,
+      evidence: typeof row.evidence === 'string' ? JSON.parse(row.evidence) : row.evidence || {},
+      processed: Boolean(row.processed),
+      proposalId: row.proposal_id || undefined,
+      createdAt: new Date(row.created_at).toISOString(),
+    };
+  }
+
+  private static mapGovernanceProposal(row: any): ImprovementProposal {
+    return {
+      id: row.id,
+      targetSkillId: row.target_skill_id,
+      proposalType: row.proposal_type,
+      title: row.title,
+      description: row.description,
+      justification: row.justification,
+      linkedFeedbackIds: typeof row.linked_feedback_ids === 'string' ? JSON.parse(row.linked_feedback_ids) : row.linked_feedback_ids || [],
+      beforeDiff: row.before_diff,
+      afterDiff: row.after_diff,
+      evaluationScore: Number(row.evaluation_score ?? 0.0),
+      evaluationMetrics: typeof row.evaluation_metrics === 'string' ? JSON.parse(row.evaluation_metrics) : row.evaluation_metrics || {},
+      securityAuditStatus: row.security_audit_status,
+      securityNotes: row.security_notes || undefined,
+      status: row.status,
+      proposedBy: row.proposed_by,
+      reviewedBy: row.reviewed_by || null,
+      decisionReason: row.decision_reason || null,
+      publishedVersion: row.published_version || null,
+      rollbackPayload: typeof row.rollback_payload === 'string' ? JSON.parse(row.rollback_payload) : row.rollback_payload || {},
+      createdAt: new Date(row.created_at).toISOString(),
+      updatedAt: new Date(row.updated_at).toISOString(),
+      publishedAt: row.published_at ? new Date(row.published_at).toISOString() : null,
+      expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
     };
   }
 }

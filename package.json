@@ -10,6 +10,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
+    "index:skills": "pnpm --filter server index:skills",
+    "index:skills:dry-run": "pnpm --filter server index:skills:dry-run",
     "telegram:dev": "pnpm --filter telegram-bot dev",
     "telegram:build": "pnpm --filter telegram-bot build",
     "telegram:test": "pnpm --filter telegram-bot test",

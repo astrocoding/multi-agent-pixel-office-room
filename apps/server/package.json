@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -b",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "index:skills": "tsx src/cli/indexSkills.ts",
+    "index:skills:dry-run": "tsx src/cli/indexSkills.ts --dry-run"
   },
   "dependencies": {
     "@agent-office/ai": "workspace:*",

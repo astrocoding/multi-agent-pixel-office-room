@@ -1,27 +1,59 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { DbQueries } from '../db/queries.js';
 import { redisClient } from '../services/redis.js';
 import type { AgentId, MemoryRecord, MemoryType, Task } from '@agent-office/shared';
 import { AGENT_IDS } from '@agent-office/shared';
-import { ModelRouter } from '@agent-office/ai';
+import {
+  ModelRouter,
+  SecretRedactor,
+  MemoryGovernor,
+  FeedbackPipeline,
+  type ScopedMemoryRecord,
+  type FeedbackRecord,
+  type ImprovementProposal,
+  type MemoryAccessScope,
+  type MemoryCategory,
+  type MemoryVisibility,
+  type RetentionPolicy,
+  type VerificationState,
+  type FeedbackSubmissionInput,
+  type ReviewProposalInput,
+  type MemoryFeatureFlags,
+} from '@agent-office/ai';
 import { QuerySafety } from '../security/querySafety.js';
 
 export class MemoryService {
   private router: ModelRouter;
+  private inMemorySessions = new Map<string, string[]>();
+  private inMemoryFeedbacks = new Map<string, FeedbackRecord>();
+  private inMemoryProposals = new Map<string, ImprovementProposal>();
+
+  private featureFlags: MemoryFeatureFlags = {
+    enableMemoryCapture: true,
+    enableMemoryRetrieval: true,
+    enableImprovementProposals: true,
+    enableAutoProposalGeneration: true,
+  };
 
   constructor(router: ModelRouter) {
     this.router = router;
   }
 
-  // 1. Short-term Session Memory (Redis) with Proportional Sliding Window
+  public getFeatureFlags(): MemoryFeatureFlags {
+    return { ...this.featureFlags };
+  }
+
+  public setFeatureFlags(updates: Partial<MemoryFeatureFlags>): void {
+    this.featureFlags = { ...this.featureFlags, ...updates };
+  }
+
+  // 1. Short-term Session Working Memory (Redis / In-memory fallback) with Proportional Sliding Window
   public async getSessionContext(sessionId: string): Promise<string[]> {
-    const raw = await redisClient.get(`session:${sessionId}:context`);
-    if (!raw) return [];
     try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
+      const raw = await redisClient.get(`session:${sessionId}:context`);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return this.inMemorySessions.get(sessionId) || [];
   }
 
   public async appendSessionContext(sessionId: string, message: string, ttlSeconds = 3600): Promise<void> {
@@ -29,7 +61,12 @@ export class MemoryService {
     history.push(`[${new Date().toISOString()}] ${message}`);
     // Keep proportional sliding window of last 12 items to prevent token bloat
     const trimmed = history.slice(-12);
-    await redisClient.set(`session:${sessionId}:context`, JSON.stringify(trimmed), 'EX', ttlSeconds);
+    this.inMemorySessions.set(sessionId, trimmed);
+    try {
+      await redisClient.set(`session:${sessionId}:context`, JSON.stringify(trimmed), 'EX', ttlSeconds);
+    } catch {
+      // In-memory fallback active
+    }
   }
 
   // 1b. Prompt Caching with Redis for repeatable instructions & project context
@@ -76,13 +113,15 @@ export class MemoryService {
     }
   ): Promise<MemoryRecord> {
     const memoryId = `mem_${crypto.randomUUID()}`;
-    const embedding = await this.router.generateEmbedding(content);
+    const redaction = SecretRedactor.redact(content);
+    const safeContent = redaction.redactedText;
+    const embedding = await this.router.generateEmbedding(safeContent);
 
     const record: Omit<MemoryRecord, 'createdAt' | 'updatedAt'> = {
       id: memoryId,
       agentId,
       memoryType,
-      content,
+      content: safeContent,
       summary: options?.summary,
       embedding,
       importance: options?.importance || 5,
@@ -94,6 +133,7 @@ export class MemoryService {
         ...options?.metadata,
         persistedBy: agentId,
         source: 'agent-office-runtime',
+        redactionsApplied: redaction.detectedCount,
       },
     };
 
@@ -105,7 +145,7 @@ export class MemoryService {
         `memory:task:${options.taskId}`,
         JSON.stringify({
           memoryId,
-          content,
+          content: safeContent,
           summary: options.summary,
           projectScope: options.projectScope,
         }),
@@ -118,6 +158,299 @@ export class MemoryService {
       ...record,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Phase 4: Scoped Memory Ingestion with Security Redaction and ACL Governance.
+   */
+  public async storeScopedMemory(params: {
+    category: MemoryCategory;
+    content: string;
+    actorId: string;
+    role?: 'owner' | 'member' | 'guest';
+    projectScope?: string;
+    tenantId?: string;
+    visibility?: MemoryVisibility;
+    verificationState?: VerificationState;
+    confidence?: number;
+    sourceProvenance?: { taskId?: string; sourceId?: string; fileLineRange?: string; reporter?: string };
+    retentionPolicy?: RetentionPolicy;
+    metadata?: Record<string, unknown>;
+  }): Promise<ScopedMemoryRecord> {
+    if (!this.featureFlags.enableMemoryCapture) {
+      throw new Error('Memory governance: memory capture is disabled via feature flag');
+    }
+
+    const scope: MemoryAccessScope = {
+      actorId: params.actorId,
+      role: params.role || 'member',
+      projectScope: params.projectScope || 'default',
+      tenantId: params.tenantId || 'default',
+    };
+
+    const visibility: MemoryVisibility = params.visibility || 'project';
+
+    if (!MemoryGovernor.isWriteAuthorized(params.category, visibility, scope)) {
+      throw new Error(`Unauthorized: actor '${params.actorId}' with role '${scope.role}' cannot write ${params.category} memory.`);
+    }
+
+    // 1. Redact secrets
+    const redaction = SecretRedactor.redact(params.content);
+    const safeContent = redaction.redactedText;
+
+    // 2. Enforce verification state (AI cannot self-promote to verified_truth)
+    const verificationState = MemoryGovernor.enforceVerificationState(
+      params.verificationState || 'observed_fact',
+      scope,
+      scope.role !== 'owner'
+    );
+
+    // 3. Compute expiration
+    const retentionPolicy = params.retentionPolicy || 'permanent';
+    const expiresAt = MemoryGovernor.computeExpiration(retentionPolicy);
+
+    const memoryId = `mem_sc_${crypto.randomUUID().slice(0, 12)}`;
+    const now = new Date().toISOString();
+
+    const record: ScopedMemoryRecord = {
+      id: memoryId,
+      category: params.category,
+      content: safeContent,
+      summary: safeContent.slice(0, 160),
+      actorId: scope.actorId,
+      projectScope: scope.projectScope,
+      tenantId: scope.tenantId || 'default',
+      visibility,
+      verificationState,
+      confidence: params.confidence ?? 1.0,
+      sourceProvenance: params.sourceProvenance || {},
+      retentionPolicy,
+      expiresAt,
+      supersededBy: null,
+      deletedAt: null,
+      metadata: {
+        ...params.metadata,
+        redactionCount: redaction.detectedCount,
+        redactedTypes: redaction.secretTypes,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // 4. Generate embedding if supported
+    let embedding: number[] | undefined;
+    try {
+      embedding = await this.router.generateEmbedding(safeContent);
+    } catch {
+      // Embedding fallback
+    }
+
+    // 5. Persist to PostgreSQL
+    try {
+      return await DbQueries.insertScopedMemory(record, embedding);
+    } catch {
+      // Return in-memory fallback
+      return record;
+    }
+  }
+
+  /**
+   * Phase 4: Scoped Memory Retrieval with ACL filtering and Expired/Deleted pruning.
+   */
+  public async retrieveScopedMemories(params: {
+    query: string;
+    scope: MemoryAccessScope;
+    category?: MemoryCategory;
+    limit?: number;
+  }): Promise<ScopedMemoryRecord[]> {
+    if (!this.featureFlags.enableMemoryRetrieval) {
+      return [];
+    }
+
+    let embedding: number[] | null = null;
+    try {
+      embedding = await this.router.generateEmbedding(params.query);
+    } catch {}
+
+    try {
+      const records = await DbQueries.searchScopedMemories(embedding, params.scope, {
+        category: params.category,
+        limit: params.limit || 10,
+      });
+
+      return MemoryGovernor.filterAuthorizedMemories(records, params.scope);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Phase 4: Delete or soft-delete memory (compliance / GDPR).
+   */
+  public async deleteScopedMemory(id: string, actorId: string, role?: string): Promise<boolean> {
+    return await DbQueries.deleteScopedMemory(id, actorId, role === 'owner');
+  }
+
+  /**
+   * Phase 4: Feedback Ingestion & Governed Proposal Pipeline.
+   */
+  public async recordFeedback(input: FeedbackSubmissionInput): Promise<{
+    feedback: FeedbackRecord;
+    deduplicated: boolean;
+    proposal?: ImprovementProposal;
+  }> {
+    // 1. Check idempotency (in-memory + database)
+    const inMem = this.inMemoryFeedbacks.get(input.idempotencyKey);
+    if (inMem) {
+      return { feedback: inMem, deduplicated: true };
+    }
+
+    try {
+      const existing = await DbQueries.getGovernanceFeedbackByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        this.inMemoryFeedbacks.set(input.idempotencyKey, existing);
+        return { feedback: existing, deduplicated: true };
+      }
+    } catch {}
+
+    // 2. Create feedback record
+    const feedback = FeedbackPipeline.createFeedbackRecord(input);
+    this.inMemoryFeedbacks.set(input.idempotencyKey, feedback);
+
+    let createdProposal: ImprovementProposal | undefined;
+
+    // 3. Check if an improvement candidate should be spawned
+    const shouldPropose =
+      this.featureFlags.enableImprovementProposals &&
+      (feedback.rating === -1 ||
+        feedback.feedbackType === 'failed_test' ||
+        feedback.feedbackType === 'invalid_artifact' ||
+        feedback.feedbackType === 'execution_error' ||
+        feedback.feedbackType === 'explicit_correction') &&
+      feedback.targetType === 'skill';
+
+    if (shouldPropose) {
+      const proposal = FeedbackPipeline.generateProposalFromFeedback({
+        feedback,
+        targetSkillId: feedback.targetIdentifier,
+        proposalType: 'instruction_refinement',
+        title: `Refine instructions for ${feedback.targetIdentifier} based on feedback ${feedback.id}`,
+        description: `Feedback details: ${feedback.details}`,
+        beforeDiff: `[Existing instructions for ${feedback.targetIdentifier}]`,
+        afterDiff: `[Improved instructions for ${feedback.targetIdentifier} incorporating user feedback: ${feedback.details}]`,
+      });
+
+      if (proposal) {
+        feedback.proposalId = proposal.id;
+        this.inMemoryProposals.set(proposal.id, proposal);
+        try {
+          await DbQueries.insertGovernanceProposal(proposal);
+          createdProposal = proposal;
+        } catch {
+          // In-memory proposal fallback
+          createdProposal = proposal;
+        }
+      }
+    }
+
+    try {
+      const savedFeedback = await DbQueries.insertGovernanceFeedback(feedback);
+      this.inMemoryFeedbacks.set(input.idempotencyKey, savedFeedback);
+      return { feedback: savedFeedback, deduplicated: false, proposal: createdProposal };
+    } catch {
+      return { feedback, deduplicated: false, proposal: createdProposal };
+    }
+  }
+
+  /**
+   * Phase 4: Review an improvement proposal (Human Owner ONLY).
+   */
+  public async reviewProposal(input: ReviewProposalInput): Promise<ImprovementProposal> {
+    let proposal: ImprovementProposal | null = this.inMemoryProposals.get(input.proposalId) || null;
+    try {
+      const dbProp = await DbQueries.getGovernanceProposalById(input.proposalId);
+      if (dbProp) proposal = dbProp;
+    } catch {}
+
+    if (!proposal) {
+      throw new Error(`Improvement proposal '${input.proposalId}' not found.`);
+    }
+
+    const reviewed = FeedbackPipeline.reviewProposal(proposal, input);
+    this.inMemoryProposals.set(reviewed.id, reviewed);
+
+    try {
+      return await DbQueries.updateGovernanceProposal(reviewed);
+    } catch {
+      return reviewed;
+    }
+  }
+
+  /**
+   * Phase 4: Publish an approved proposal (Version bump, audit trail, reindex).
+   */
+  public async publishProposal(
+    proposalId: string,
+    publisherRole: string,
+    currentVersion = '1.0.0'
+  ): Promise<{
+    proposal: ImprovementProposal;
+    newVersion: string;
+    rollbackSnapshot: Record<string, unknown>;
+  }> {
+    let proposal: ImprovementProposal | null = this.inMemoryProposals.get(proposalId) || null;
+    try {
+      const dbProp = await DbQueries.getGovernanceProposalById(proposalId);
+      if (dbProp) proposal = dbProp;
+    } catch {}
+
+    if (!proposal) {
+      throw new Error(`Improvement proposal '${proposalId}' not found.`);
+    }
+
+    const res = FeedbackPipeline.publishProposal(proposal, publisherRole, currentVersion);
+    this.inMemoryProposals.set(res.updatedProposal.id, res.updatedProposal);
+
+    try {
+      await DbQueries.updateGovernanceProposal(res.updatedProposal);
+    } catch {}
+
+    return {
+      proposal: res.updatedProposal,
+      newVersion: res.newVersion,
+      rollbackSnapshot: res.rollbackSnapshot,
+    };
+  }
+
+  /**
+   * Phase 4: Rollback a published proposal in case of regression.
+   */
+  public async rollbackProposal(
+    proposalId: string,
+    operatorRole: string,
+    reason: string
+  ): Promise<{ proposal: ImprovementProposal; restoredContent: string }> {
+    let proposal: ImprovementProposal | null = this.inMemoryProposals.get(proposalId) || null;
+    try {
+      const dbProp = await DbQueries.getGovernanceProposalById(proposalId);
+      if (dbProp) proposal = dbProp;
+    } catch {}
+
+    if (!proposal) {
+      throw new Error(`Improvement proposal '${proposalId}' not found.`);
+    }
+
+    const res = FeedbackPipeline.rollbackProposal(proposal, operatorRole, reason);
+    this.inMemoryProposals.set(res.rolledBackProposal.id, res.rolledBackProposal);
+
+    try {
+      await DbQueries.updateGovernanceProposal(res.rolledBackProposal);
+    } catch {}
+
+    return {
+      proposal: res.rolledBackProposal,
+      restoredContent: res.restoredContent,
     };
   }
 
@@ -166,7 +499,6 @@ export class MemoryService {
     };
 
     await redisClient.set(`task:details:${task.id}`, JSON.stringify(cachePayload), 'EX', 86400 * 3);
-    // Also store normalized key (e.g. if task.id is task_972, also store 972)
     const strippedId = task.id.replace(/^task_/, '');
     if (strippedId !== task.id) {
       await redisClient.set(`task:details:${strippedId}`, JSON.stringify(cachePayload), 'EX', 86400 * 3);
@@ -346,5 +678,3 @@ export class MemoryService {
     return summaryRes.text;
   }
 }
-
-

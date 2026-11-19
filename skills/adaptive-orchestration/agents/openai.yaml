@@ -1,0 +1,3 @@
+interface:
+  display_name: "Adaptive Agent Orchestration"
+  short_description: "Route, plan, verify and safely improve multi-agent work"
