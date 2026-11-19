@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import type { TelegramActor } from '../../domains/identity/domain/identityTypes.js';
+import type { TaskAttachment } from '@agent-office/shared';
 
 export interface InternalApiStatusResponse {
   success: boolean;
@@ -92,7 +93,8 @@ export class AgentOfficeClient {
     title: string,
     description: string,
     actor: TelegramActor,
-    targetAgentId = 'agent_leader'
+    targetAgentId = 'agent_leader',
+    attachments?: TaskAttachment[]
   ): Promise<{ success: boolean; taskId: string; status: string }> {
     const res = await fetch(`${this.baseUrl}/api/internal/tasks`, {
       method: 'POST',
@@ -101,6 +103,7 @@ export class AgentOfficeClient {
         title,
         description,
         targetAgentId,
+        attachments: attachments || [],
         context: {
           source: 'telegram',
           actorId: actor.actorId,
@@ -170,7 +173,8 @@ export class AgentOfficeClient {
     text: string,
     targetAgentId: string,
     actor: TelegramActor,
-    sessionId = 'session_telegram'
+    sessionId = 'session_telegram',
+    attachments?: TaskAttachment[]
   ): Promise<{ success: boolean; sender: string; agentName: string; reply: string }> {
     const res = await fetch(`${this.baseUrl}/api/internal/chat`, {
       method: 'POST',
@@ -179,6 +183,7 @@ export class AgentOfficeClient {
         text,
         targetAgentId,
         sessionId,
+        attachments: attachments || [],
         context: {
           source: 'telegram',
           actorId: actor.actorId,

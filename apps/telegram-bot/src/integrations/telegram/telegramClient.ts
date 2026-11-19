@@ -170,5 +170,36 @@ export class TelegramClient {
     }
     return this.request('setMyCommands', { commands });
   }
+
+  public async getFile(fileId: string): Promise<{
+    file_id: string;
+    file_unique_id?: string;
+    file_size?: number;
+    file_path?: string;
+  }> {
+    return this.request('getFile', { file_id: fileId });
+  }
+
+  public async downloadFile(filePath: string): Promise<Buffer> {
+    const url = `https://api.telegram.org/file/bot${this.botToken}/${filePath}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to download file from Telegram (${res.status}): ${res.statusText}`);
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  public async sendChatAction(
+    chatId: number,
+    action: 'typing' | 'upload_photo' | 'upload_document' = 'typing'
+  ): Promise<boolean> {
+    try {
+      await this.request('sendChatAction', { chat_id: chatId, action });
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 

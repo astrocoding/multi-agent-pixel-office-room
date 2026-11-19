@@ -15,12 +15,31 @@ export const telegramChatSchema = z.object({
   username: z.string().optional(),
 });
 
+export const telegramPhotoSizeSchema = z.object({
+  file_id: z.string(),
+  file_unique_id: z.string(),
+  width: z.number(),
+  height: z.number(),
+  file_size: z.number().optional(),
+});
+
+export const telegramDocumentSchema = z.object({
+  file_id: z.string(),
+  file_unique_id: z.string().optional(),
+  file_name: z.string().optional(),
+  mime_type: z.string().optional(),
+  file_size: z.number().optional(),
+});
+
 export const telegramMessageSchema = z.object({
   message_id: z.number(),
   from: telegramUserSchema.optional(),
   chat: telegramChatSchema,
   date: z.number(),
   text: z.string().optional(),
+  caption: z.string().optional(),
+  photo: z.array(telegramPhotoSizeSchema).optional(),
+  document: telegramDocumentSchema.optional(),
 });
 
 export const telegramCallbackQuerySchema = z.object({
