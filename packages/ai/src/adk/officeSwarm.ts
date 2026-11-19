@@ -17,7 +17,7 @@ import {
 } from './models.js';
 import { createOfficeFunctionTools, type OfficeFunctionTools, type OfficeToolHandlers } from './tools.js';
 import { SYSTEM_PROMPTS } from '../prompts/agentPrompts.js';
-import { AGENT_IDS, type AgentId } from '@agent-office/shared';
+import { AGENT_IDS, type AgentId, type TaskAttachment } from '@agent-office/shared';
 
 export interface OfficeSwarmOptions {
   modelConfig: AdkModelConfig;
@@ -76,6 +76,7 @@ export class GoogleAdkOfficeSwarm {
       requestHumanApprovalTool,
       searchKnowledgeSopTool,
       generateImageTool,
+      analyzeDocumentOrImageTool,
     } = this.tools;
 
     // 1. Engineering Specialist (Iky / Torvalds) - Gemini 3.8 Flash (Flagship Code Model)
@@ -98,6 +99,7 @@ export class GoogleAdkOfficeSwarm {
         getTaskDetailsTool,
         searchKnowledgeSopTool,
         generateImageTool,
+        analyzeDocumentOrImageTool,
       ],
     });
 
@@ -119,6 +121,7 @@ export class GoogleAdkOfficeSwarm {
         getTaskDetailsTool,
         searchKnowledgeSopTool,
         generateImageTool,
+        analyzeDocumentOrImageTool,
       ],
     });
 
@@ -160,6 +163,7 @@ export class GoogleAdkOfficeSwarm {
         getTaskDetailsTool,
         queryTasksDatabaseTool,
         searchKnowledgeSopTool,
+        analyzeDocumentOrImageTool,
       ],
     });
 
@@ -180,6 +184,7 @@ export class GoogleAdkOfficeSwarm {
         recallMemoryTool,
         storeMemoryTool,
         readFileTool,
+        analyzeDocumentOrImageTool,
       ],
     });
 
@@ -205,6 +210,7 @@ export class GoogleAdkOfficeSwarm {
         recallMemoryTool,
         storeMemoryTool,
         generateImageTool,
+        analyzeDocumentOrImageTool,
       ],
       subAgents: [this.torvalds, this.ada, this.volt, this.iris, this.mnemo],
     });
@@ -260,6 +266,7 @@ export class GoogleAdkOfficeSwarm {
     userText: string;
     targetAgentId?: AgentId;
     activeDirectory?: string;
+    attachments?: TaskAttachment[];
     stateDelta?: Record<string, unknown>;
   }): AsyncGenerator<SwarmEvent, { replyText: string }, void> {
     const userId = params.userId || 'boss';
@@ -278,12 +285,68 @@ export class GoogleAdkOfficeSwarm {
       textToSend = `[Active Working Directory: "${params.activeDirectory}"]\n${textToSend}`;
     }
 
+    const messageParts: Array<
+      | { text: string }
+      | { inlineData: { mimeType: string; data: string; displayName?: string } }
+    > = [{ text: textToSend }];
+
+    // Inject verified multimodal attachments (images, PDFs, documents, code) directly into message parts
+    if (params.attachments && params.attachments.length > 0) {
+      for (const att of params.attachments) {
+        const ext = (att.name.includes('.') ? `.${att.name.split('.').pop()}` : '').toLowerCase();
+        const isImage =
+          att.type === 'image' ||
+          att.mimeType?.startsWith('image/') ||
+          ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+        const isPdf =
+          att.mimeType === 'application/pdf' ||
+          ext === '.pdf';
+
+        if (isImage) {
+          let b64 = att.base64Data || '';
+          if (!b64 && att.content && att.content.startsWith('data:image')) {
+            b64 = att.content.split(',')[1] || '';
+          }
+          if (b64) {
+            const cleanData = b64.replace(/^data:image\/[a-zA-Z]+;base64,/, '').trim();
+            const mime = att.mimeType || (ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg');
+            messageParts.push({
+              inlineData: {
+                mimeType: mime,
+                data: cleanData,
+                displayName: att.name,
+              },
+            });
+          }
+        } else if (isPdf) {
+          let b64 = att.base64Data || '';
+          if (!b64 && att.content && att.content.startsWith('data:application/pdf')) {
+            b64 = att.content.split(',')[1] || '';
+          }
+          if (b64) {
+            const cleanData = b64.replace(/^data:application\/pdf;base64,/, '').trim();
+            messageParts.push({
+              inlineData: {
+                mimeType: 'application/pdf',
+                data: cleanData,
+                displayName: att.name,
+              },
+            });
+          }
+        } else if (att.content) {
+          messageParts.push({
+            text: `\n[ATTACHED FILE CONTENT: "${att.name}" (${att.mimeType || 'text/plain'}, ${att.size} bytes)]:\n\`\`\`\n${att.content}\n\`\`\`\n`,
+          });
+        }
+      }
+    }
+
     try {
       const eventStream = this.runner.runAsync({
         userId,
         sessionId,
         newMessage: {
-          parts: [{ text: textToSend }],
+          parts: messageParts as any,
         },
         stateDelta: {
           activeDirectory: params.activeDirectory || '~/Projects',

@@ -180,6 +180,22 @@ export interface OfficeToolHandlers {
     prompt: string;
     error?: string;
   }>;
+  analyzeDocumentOrImage?: (params: {
+    analysisFocus: string;
+    filePath?: string;
+    attachmentId?: string;
+    fileName?: string;
+  }) => Promise<{
+    success: boolean;
+    fileKind: 'image' | 'pdf' | 'markdown' | 'code' | 'document' | 'other';
+    fileName: string;
+    extractedText: string;
+    ocrText?: string;
+    visualElements?: string[];
+    summary: string;
+    confidence: 'high' | 'medium' | 'low';
+    error?: string;
+  }>;
 }
 
 export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
@@ -627,6 +643,50 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     },
   });
 
+  const analyzeDocumentOrImageTool = new FunctionTool({
+    name: 'analyze_document_or_image',
+    description:
+      'Deeply inspects, extracts text (OCR), transcribes, or analyzes uploaded images (PNG, JPG, JPEG, WEBP), PDF documents, or workspace files. Use this whenever Boss asks about the content of an uploaded image/document, or when you need exact OCR transcription, UI wireframe inspection, code snippet extraction from screenshots, or architectural diagram breakdown. NEVER guess or hallucinate image contents without inspecting pixel data or calling this tool!',
+    parameters: z.object({
+      analysisFocus: z
+        .string()
+        .describe(
+          'What to extract or inspect, e.g. "ocr_text" (extract all visible text/numbers), "ui_analysis" (breakdown UI components/buttons/cards), "code_extraction" (transcribe code snippets), "document_summary" (summarize PDF/doc), or "general_inspection".'
+        ),
+      filePath: z
+        .string()
+        .optional()
+        .describe('Optional workspace file path to the image, PDF, or document to analyze.'),
+      attachmentId: z
+        .string()
+        .optional()
+        .describe('Optional ID of an attached file from the active task or chat message.'),
+      fileName: z
+        .string()
+        .optional()
+        .describe('Optional filename of the attachment to target.'),
+    }),
+    execute: async ({ analysisFocus, filePath, attachmentId, fileName }) => {
+      if (handlers.analyzeDocumentOrImage) {
+        return await handlers.analyzeDocumentOrImage({
+          analysisFocus,
+          filePath,
+          attachmentId,
+          fileName,
+        });
+      }
+      return {
+        success: false,
+        fileKind: 'other',
+        fileName: fileName || filePath || 'unknown',
+        extractedText: '',
+        summary: 'Multimodal document and image analyzer handler is not configured on this host.',
+        confidence: 'low',
+        error: 'Multimodal document and image analyzer handler is not configured.',
+      };
+    },
+  });
+
   return {
     executeBashTool,
     readFileTool,
@@ -645,6 +705,7 @@ export function createOfficeFunctionTools(handlers: OfficeToolHandlers) {
     queryHistoricalChatTool,
     queryAgentLearningsTool,
     generateImageTool,
+    analyzeDocumentOrImageTool,
   };
 }
 
