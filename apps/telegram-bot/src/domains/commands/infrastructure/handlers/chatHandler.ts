@@ -36,7 +36,14 @@ export const chatHandler: CommandHandler = {
     }
 
     try {
-      const res = await ctx.agentOfficeClient.sendChat(message, targetAgentId, ctx.actor);
+      const sessionId = `telegram_${ctx.actor.chatId}`;
+      const res = await ctx.agentOfficeClient.sendChat(
+        message,
+        targetAgentId,
+        ctx.actor,
+        sessionId,
+        ctx.attachments
+      );
       return [
         `${res.agentName}:`,
         res.reply,

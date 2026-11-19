@@ -6,6 +6,7 @@ import { Logger } from '../../../infrastructure/logging/logger.js';
 import type { TelegramActor } from '../../identity/domain/identityTypes.js';
 import type { AgentOfficeClient } from '../../../integrations/agent-office/agentOfficeClient.js';
 import type { DeliveryService } from '../../delivery/application/deliveryService.js';
+import { AGENT_IDS, type TaskAttachment } from '@agent-office/shared';
 
 export class CommandDispatcher {
   private agentOfficeClient: AgentOfficeClient;
@@ -20,7 +21,8 @@ export class CommandDispatcher {
     text: string,
     actor: TelegramActor,
     messageId: number,
-    updateId?: number
+    updateId?: number,
+    attachments?: TaskAttachment[]
   ): Promise<string> {
     const logCtx = {
       updateId,
@@ -49,7 +51,7 @@ export class CommandDispatcher {
         const title = taskDescription.slice(0, 50);
 
         try {
-          const res = await this.agentOfficeClient.createTask(title, taskDescription, actor);
+          const res = await this.agentOfficeClient.createTask(title, taskDescription, actor, 'agent_leader', attachments);
           const response = MessageFormatter.formatTaskCreated(res.taskId, title, 'Zen (Leader)');
           await this.deliveryService.sendResponse(actor.chatId, response);
           return response;
@@ -61,14 +63,54 @@ export class CommandDispatcher {
       }
     }
 
-    // 3. If plain message without command or active session
+    // 3. Handle natural language conversation & multimodal queries (Private chat, group mentions, or file attachments)
     if (!parsed.isCommand) {
-      const response = [
-        'PERINTAH TIDAK DIKENAL',
-        'Ketik /help untuk melihat daftar perintah bot.',
-      ].join('\n');
-      await this.deliveryService.sendResponse(actor.chatId, response);
-      return response;
+      const hasAttachments = attachments && attachments.length > 0;
+      const isPrivateChat = actor.chatType === 'private';
+      const isMentioned =
+        /@zen\b/i.test(text) ||
+        /@dre\b/i.test(text) ||
+        /@iky\b/i.test(text) ||
+        /@gus\b/i.test(text) ||
+        /@rai\b/i.test(text) ||
+        /@dhea\b/i.test(text) ||
+        /@bot\b/i.test(text);
+
+      // In group chats, only respond if bot/agent is mentioned or an attachment was explicitly uploaded for analysis
+      if (!isPrivateChat && !isMentioned && !hasAttachments) {
+        return '';
+      }
+
+      // Auto-route target agent based on mention or task context
+      let targetAgentId: string = AGENT_IDS.LEADER;
+      if (/@dre\b/i.test(text) || /@ada\b/i.test(text)) {
+        targetAgentId = AGENT_IDS.RESEARCH;
+      } else if (/@iky\b/i.test(text) || /@torvalds\b/i.test(text)) {
+        targetAgentId = AGENT_IDS.ENGINEERING;
+      } else if (/@gus\b/i.test(text) || /@volt\b/i.test(text) || /@eca\b/i.test(text)) {
+        targetAgentId = AGENT_IDS.AUTOMATION;
+      } else if (/@rai\b/i.test(text) || /@iris\b/i.test(text)) {
+        targetAgentId = AGENT_IDS.QA;
+      } else if (/@dhea\b/i.test(text) || /@mnemo\b/i.test(text)) {
+        targetAgentId = AGENT_IDS.MEMORY;
+      } else if (hasAttachments && (/cek\b|baca\b|analisis\b|isi file\b|ocr\b/i.test(text) || !text.trim())) {
+        targetAgentId = AGENT_IDS.RESEARCH; // Dre specializes in research & multimodal analysis
+      }
+
+      const cleanPrompt = text.trim() || 'Tolong analisis dan periksa isi dari file/gambar yang saya lampirkan ini.';
+      const sessionId = `telegram_${actor.chatId}`;
+
+      try {
+        const res = await this.agentOfficeClient.sendChat(cleanPrompt, targetAgentId, actor, sessionId, attachments);
+        const replyText = `${res.agentName}:\n${res.reply}`;
+        await this.deliveryService.sendResponse(actor.chatId, replyText);
+        return replyText;
+      } catch (err) {
+        Logger.error('Failed to process Telegram natural chat message', err, logCtx);
+        const errResp = MessageFormatter.formatError('Maaf Bos, terjadi kendala saat memproses pesan/lampiran ke AI Agent.');
+        await this.deliveryService.sendResponse(actor.chatId, errResp);
+        return errResp;
+      }
     }
 
     // 4. Resolve command handler
@@ -105,6 +147,7 @@ export class CommandDispatcher {
         messageId,
         agentOfficeClient: this.agentOfficeClient,
         deliveryService: this.deliveryService,
+        attachments,
       });
 
       const responseText = typeof result === 'string' ? result : result.text;

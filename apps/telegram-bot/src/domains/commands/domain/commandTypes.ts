@@ -1,6 +1,7 @@
 import type { TelegramActor, ActorRole } from '../../identity/domain/identityTypes.js';
 import type { AgentOfficeClient } from '../../../integrations/agent-office/agentOfficeClient.js';
 import type { DeliveryService } from '../../delivery/application/deliveryService.js';
+import type { TaskAttachment } from '@agent-office/shared';
 
 export interface CommandContext {
   command: string;
@@ -10,6 +11,7 @@ export interface CommandContext {
   messageId: number;
   agentOfficeClient: AgentOfficeClient;
   deliveryService: DeliveryService;
+  attachments?: TaskAttachment[];
 }
 
 export type CommandExecutionResult =
