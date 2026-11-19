@@ -75,6 +75,7 @@ export const chatSendSchema = z.object({
   text: z.string().min(1).max(4000),
   recipientAgentId: agentIdSchema.optional(),
   sessionId: z.string().optional(),
+  attachments: z.array(z.any()).optional(),
 });
 
 export const createChatSessionSchema = z.object({
