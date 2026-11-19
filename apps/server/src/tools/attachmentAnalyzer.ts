@@ -87,7 +87,7 @@ export class AttachmentAnalyzer {
       ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
 
     if (isImage) {
-      const mime = att.mimeType || (ext === '.png' ? 'image/png' : 'image/jpeg');
+      const mime = att.mimeType || (ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg');
       let base64 = att.base64Data || '';
       if (!base64 && att.content && att.content.startsWith('data:image')) {
         base64 = att.content.split(',')[1] || '';
@@ -104,6 +104,31 @@ export class AttachmentAnalyzer {
         },
         summary: `Image attachment: ${att.name} (${att.size} bytes, ${mime})`,
         metadata: { byteSize: att.size },
+      };
+    }
+
+    // 4. PDF Document handling
+    const isPdf = att.mimeType === 'application/pdf' || ext === '.pdf';
+    if (isPdf) {
+      let base64 = att.base64Data || '';
+      if (!base64 && att.content && att.content.startsWith('data:application/pdf')) {
+        base64 = att.content.split(',')[1] || '';
+      }
+
+      return {
+        attachmentId: att.id,
+        name: att.name,
+        isSafe: true,
+        fileKind: 'document',
+        imagePayload: base64
+          ? {
+              mimeType: 'application/pdf',
+              base64Data: base64,
+            }
+          : undefined,
+        extractedText: att.content && !att.content.startsWith('data:') ? att.content : undefined,
+        summary: `PDF document: ${att.name} (${att.size} bytes)`,
+        metadata: { byteSize: att.size, detectedLanguage: 'pdf' },
       };
     }
 
@@ -161,9 +186,9 @@ export class AttachmentAnalyzer {
     if (safeInspections.length > 0) {
       augmentedPrompt += `\n\n[USER ATTACHMENTS & CONTEXT]:\n`;
       for (const item of safeInspections) {
-        if (item.fileKind === 'image' && item.imagePayload?.base64Data) {
+        if ((item.fileKind === 'image' || item.metadata.detectedLanguage === 'pdf') && item.imagePayload?.base64Data) {
           imageAttachments.push(item.imagePayload);
-          augmentedPrompt += `\n[Image Attachment: ${item.name} attached for visual analysis]\n`;
+          augmentedPrompt += `\n[${item.metadata.detectedLanguage === 'pdf' ? 'PDF Document' : 'Image Attachment'}: ${item.name} attached for visual analysis]\n`;
         } else if (item.extractedText) {
           augmentedPrompt += `\n--- Begin File: ${item.name} (${item.fileKind}) ---\n${item.extractedText}\n--- End File: ${item.name} ---\n`;
         }

@@ -21,6 +21,7 @@ import { ShellExecutionTool, WorkspaceFsTools, AttachmentAnalyzer } from '../too
 import { DbQueries } from '../db/queries.js';
 import { QuerySafety } from '../security/querySafety.js';
 import { ImageGenerationService } from '../services/imageGenerationService.js';
+import { MultimodalDocumentService } from '../services/multimodalDocumentService.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -31,6 +32,7 @@ export class AdkOfficeService {
   private socketBridge: SocketServerBridge;
   private memoryService?: MemoryService;
   private imageService: ImageGenerationService;
+  private multimodalService: MultimodalDocumentService;
   private activeDirectory = '~/Projects';
   private activeTaskId: string | null = null;
   private taskTerminalLogsMap = new Map<string, ToolExecutionRecord[]>();
@@ -44,6 +46,7 @@ export class AdkOfficeService {
     this.socketBridge = socketBridge;
     this.memoryService = memoryService;
     this.imageService = new ImageGenerationService(apiKey, this.activeDirectory);
+    this.multimodalService = new MultimodalDocumentService(apiKey, this.activeDirectory);
 
     const toolHandlers: OfficeToolHandlers = {
       executeBash: async ({ command, workingDirectory }) => {
@@ -611,6 +614,10 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
 
         return result;
       },
+
+      analyzeDocumentOrImage: async (params) => {
+        return await this.multimodalService.analyzeDocumentOrImage(params);
+      },
     };
 
     const modelConfig: AdkModelConfig = {
@@ -720,9 +727,31 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
     // 1. Process Multimodal attachments & persist learned knowledge to memory
     let enrichedPrompt = userText;
     if (attachments && attachments.length > 0) {
+      this.multimodalService.registerAttachments(attachments);
       const inspections = attachments.map((a) => AttachmentAnalyzer.inspectAttachment(a));
       const multimodal = AttachmentAnalyzer.buildMultimodalMessages(userText, inspections);
       enrichedPrompt = multimodal.textPrompt;
+
+      // Deeply analyze visual attachments (images, PDFs) proactively to prevent hallucination
+      for (const item of inspections) {
+        if (item.isSafe && (item.fileKind === 'image' || item.metadata.detectedLanguage === 'pdf') && item.imagePayload?.base64Data) {
+          try {
+            const analysis = await this.multimodalService.analyzeDocumentOrImage({
+              analysisFocus: 'ocr_text_and_ui_layout',
+              fileName: item.name,
+              base64Data: item.imagePayload.base64Data,
+              mimeType: item.imagePayload.mimeType,
+            });
+
+            if (analysis.success && analysis.extractedText) {
+              enrichedPrompt += `\n\n[VERIFIED FACTUAL OCR TRANSCRIPTION & VISUAL CONTENT FOR "${item.name}"]:\n${analysis.extractedText}\n(Directive to Agents: The above OCR text and visual elements are physically extracted from the uploaded file pixels. State these factual observations honestly and DO NOT hallucinate nonexistent content!)\n`;
+              item.extractedText = analysis.extractedText;
+            }
+          } catch (err) {
+            console.warn('[AdkOfficeService] Proactive vision analysis warning:', err);
+          }
+        }
+      }
 
       // Persist knowledge of attached files to semantic memory for multi-agent recall
       if (this.memoryService) {
@@ -735,7 +764,7 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
               `Learned from attachment [${item.name}] (${item.fileKind}, ${item.metadata.byteSize} bytes):\n${item.summary}\n${previewText}`,
               {
                 summary: `Attachment analysis & knowledge: ${item.name}`,
-                importance: 8,
+                importance: 9,
                 metadata: {
                   attachmentId: item.attachmentId,
                   fileName: item.name,
@@ -805,6 +834,7 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       userText: enrichedPrompt,
       targetAgentId,
       activeDirectory: this.activeDirectory,
+      attachments: attachments || undefined,
     });
 
     for await (const event of stream) {
@@ -973,12 +1003,44 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       bubbleType: 'thought',
     });
 
+    if (task.attachments && task.attachments.length > 0) {
+      this.multimodalService.registerAttachments(task.attachments);
+    }
+
+    let attachmentContextText = '';
+    if (task.attachments && task.attachments.length > 0) {
+      for (const att of task.attachments) {
+        const ext = (att.name.includes('.') ? `.${att.name.split('.').pop()}` : '').toLowerCase();
+        const isVisual =
+          att.type === 'image' ||
+          att.mimeType?.startsWith('image/') ||
+          att.mimeType === 'application/pdf' ||
+          ['.png', '.jpg', '.jpeg', '.webp', '.pdf'].includes(ext);
+
+        if (isVisual && att.base64Data) {
+          try {
+            const analysis = await this.multimodalService.analyzeDocumentOrImage({
+              analysisFocus: 'ocr_text_and_ui_layout',
+              fileName: att.name,
+              base64Data: att.base64Data,
+              mimeType: att.mimeType,
+            });
+            if (analysis.success && analysis.extractedText) {
+              attachmentContextText += `\n[VERIFIED MULTIMODAL OCR & ANALYSIS FOR ATTACHMENT "${att.name}"]:\n${analysis.extractedText}\n`;
+            }
+          } catch (e) {
+            console.warn('[AdkOfficeService] Task attachment analysis warning:', e);
+          }
+        }
+      }
+    }
+
     const prompt = `DIRECTIVE FROM BOSS:
 Task Title: ${task.title}
 Task Description: ${task.description}
 Active Directory: ${this.activeDirectory}
 Attached Files: ${task.attachments?.map((a) => a.name).join(', ') || 'None'}
-
+${attachmentContextText}
 MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
 1. DECISION MAKING & WORKLOAD EVALUATION:
    Zen must evaluate task complexity ("trivial", "moderate", "complex", or "mission_critical") and call plan_task_execution to register the plan and strategy.
@@ -999,6 +1061,7 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
       userText: prompt,
       targetAgentId: AGENT_IDS.LEADER,
       activeDirectory: this.activeDirectory,
+      attachments: task.attachments || undefined,
     });
 
     let deliverable = '';
