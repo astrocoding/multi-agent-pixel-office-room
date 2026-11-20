@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import path from 'path';
 import os from 'os';
+import fsSync from 'fs';
 import { WorkspaceFsTools } from './workspaceFs.js';
 
 export interface ShellExecResult {
@@ -82,10 +83,10 @@ export class ShellExecutionTool {
     const expandedCommand = this.expandTilde(command);
     const effectiveCwd = WorkspaceFsTools.resolveSafePath(relativeCwd);
 
-    // Ensure working directory exists if relative
+    // Ensure working directory physically exists before running command
     try {
-      if (relativeCwd && !relativeCwd.startsWith('~') && !path.isAbsolute(relativeCwd)) {
-        WorkspaceFsTools.createDirectory(relativeCwd);
+      if (!fsSync.existsSync(effectiveCwd)) {
+        fsSync.mkdirSync(effectiveCwd, { recursive: true });
       }
     } catch {}
 
@@ -118,6 +119,13 @@ export class ShellExecutionTool {
             PATH: enhancedPath,
             NODE_ENV: process.env.NODE_ENV || 'development',
             FORCE_COLOR: '0', // Clean plain text logs
+            DATABASE_URL:
+              process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/fastify_students_test',
+            PGHOST: process.env.PGHOST || 'localhost',
+            PGPORT: process.env.PGPORT || '5432',
+            PGUSER: process.env.PGUSER || 'postgres',
+            PGPASSWORD: process.env.PGPASSWORD || 'postgres',
+            PGDATABASE: process.env.PGDATABASE || 'fastify_students_test',
           },
         },
         (error, stdout, stderr) => {

@@ -383,10 +383,22 @@ export class TeamAdmissionPolicy {
       isEligible: true,
     };
 
+    const teamSet = new Set<AgentId>([AGENT_IDS.LEADER, ...targetSpecialists]);
+    // Strict invariant: Software engineering deliverables always require QA verification
+    if (teamSet.has(AGENT_IDS.ENGINEERING) && !teamSet.has(AGENT_IDS.QA)) {
+      if (teamSet.size >= 3) {
+        // Prioritize QA verification over secondary background automation or research
+        if (teamSet.has(AGENT_IDS.AUTOMATION)) teamSet.delete(AGENT_IDS.AUTOMATION);
+        else if (teamSet.has(AGENT_IDS.RESEARCH)) teamSet.delete(AGENT_IDS.RESEARCH);
+      }
+      teamSet.add(AGENT_IDS.QA);
+    }
+    const targetedTeamList = Array.from(teamSet).slice(0, 3) as AgentId[];
+
     const targetedTeam: TeamCandidate = {
       teamName: 'Targeted Specialist Team',
-      agents: Array.from(new Set([AGENT_IDS.LEADER, ...targetSpecialists])).slice(0, 3) as AgentId[],
-      rationale: 'Leader coordinates 1-2 designated specialists with distinct work packages.',
+      agents: targetedTeamList,
+      rationale: 'Leader coordinates designated specialists with distinct, validated work packages.',
       estimatedCoordinationOverhead: 30,
       isEligible: complexityTier === 'moderate' || complexityTier === 'high' || complexityTier === 'very_high',
     };

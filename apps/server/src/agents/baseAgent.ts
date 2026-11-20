@@ -123,6 +123,12 @@ export abstract class BaseAgent {
       this.socketBridge.broadcastToolExecuted(fullRecord);
     }
 
+    if (taskId) {
+      DbQueries.recordTerminalLog(fullRecord, taskId).catch((err) =>
+        console.warn(`[BaseAgent] Failed to persist terminal log for task ${taskId}:`, err)
+      );
+    }
+
     await this.recordActivity(
       ROOM_EVENTS.TOOL_CALLED,
       `Tool [${record.toolName}] ${record.command ? `> ${record.command.slice(0, 70)}` : ''} (${record.success ? 'Success' : `Failed: exit ${record.exitCode}`})`,

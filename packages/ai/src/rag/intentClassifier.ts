@@ -180,18 +180,29 @@ export class IntentClassifier {
       tone = 'philosophical';
     }
 
-    // 6. Specialist Assignment Routing
+    // 6. Specialist Assignment Routing (Strict Domain Specialization)
     const specialists: AgentId[] = [AGENT_IDS.LEADER];
-    if (/\b(research|riset|analisis|cari info|investigasi)\b/i.test(lower)) {
+    const isEngineering = /\b(kode|code|buatkan|build|implement|scaffold|bikin|directory|direktori|folder|projek|project|api|fastify|express|laravel|crud|endpoint|endpoints|backend|frontend|script|bug|fungsi|refactor)\b/i.test(lower);
+    const isTesting = /\b(test|testing|uji|pengujian|curl|audit|verifikasi|verify|check|lint|sintaks|validasi|recheck)\b/i.test(lower);
+    const isResearch = /\b(research|riset|analisis|dokumentasi|docs|cari info|investigasi|pelajari|survey|benchmark)\b/i.test(lower);
+    const isAutomation = /\b(otomasi|automation|jadwal|schedule|cron|daemon|background job|pipeline ci\/cd)\b/i.test(lower);
+    const isMemory = /\b(memori|memory|riwayat|simpan pola|history|ingat|archive)\b/i.test(lower);
+
+    if (isResearch && !isEngineering) {
       specialists.push(AGENT_IDS.RESEARCH);
     }
-    if (/\b(kode|buat api|backend|frontend|script|bug|fungsi|code|refactor)\b/i.test(lower)) {
-      specialists.push(AGENT_IDS.ENGINEERING, AGENT_IDS.QA);
+    if (isEngineering) {
+      specialists.push(AGENT_IDS.ENGINEERING);
+      // Any software engineering deliverable requires QA verification
+      specialists.push(AGENT_IDS.QA);
     }
-    if (/\b(otomasi|jadwal|pipeline|deploy|cron|telegram)\b/i.test(lower)) {
+    if (isTesting && !specialists.includes(AGENT_IDS.QA)) {
+      specialists.push(AGENT_IDS.QA);
+    }
+    if (isAutomation && !isEngineering) {
       specialists.push(AGENT_IDS.AUTOMATION);
     }
-    if (/\b(memori|riwayat|simpan pola|history|ingat)\b/i.test(lower)) {
+    if (isMemory) {
       specialists.push(AGENT_IDS.MEMORY);
     }
 

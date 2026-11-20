@@ -3,7 +3,34 @@ import { AGENT_CONFIGS, AGENT_IDS, ROOM_EVENTS, type TaskAttachment, type ToolEx
 import { SYSTEM_PROMPTS, QaEvaluator } from '@agent-office/ai';
 import { OfficeTools, WorkspaceFsTools, AttachmentAnalyzer } from '../tools/index.js';
 import type { MemoryService } from '../memory/memoryService.js';
+import path from 'node:path';
+import fsSync from 'node:fs';
 import { z } from 'zod';
+
+export function extractTargetProjectDir(text: string): string {
+  const explicitMatch = text.match(
+    /(?:project\s+directory|project\s+folder|direktori\s+projek|direktori)\s*[:=]?\s*[`"']?([~a-zA-Z0-9_\-\.\/]+)[`"']?/i
+  );
+  const quotedMatch = text.match(/(?:directory|folder|direktori)\s*[:=]?\s*["']([^"'\n]+)["']/i);
+  const tildeMatch = text.match(/~\/Projects\/([a-zA-Z0-9_\-]+)/i);
+  const stopWords = ['already', 'exists', 'the', 'a', 'an', 'ini', 'di', 'dalam', 'tersebut', 'projek', 'project'];
+
+  let candidate = '';
+  if (explicitMatch && explicitMatch[1] && !stopWords.includes(explicitMatch[1].toLowerCase())) {
+    candidate = explicitMatch[1].trim();
+  } else if (quotedMatch && quotedMatch[1] && !stopWords.includes(quotedMatch[1].toLowerCase())) {
+    candidate = quotedMatch[1].trim();
+  } else if (tildeMatch && tildeMatch[1]) {
+    candidate = tildeMatch[1].trim();
+  }
+
+  const clean = candidate.replace(/^[`"'\s]+|[`"',\.\;\:\s]+$/g, '').replace(/\/+$/, '');
+  if (!clean) return '~/Projects';
+  if (clean.startsWith('~/') || clean.startsWith('/') || clean.startsWith('Projects/')) {
+    return clean.startsWith('Projects/') ? '~/' + clean : clean;
+  }
+  return '~/Projects/' + clean;
+}
 
 export const planSchema = z.object({
   summary: z.string().default('Multi-agent execution roadmap'),
@@ -87,10 +114,15 @@ Prior Knowledge & Learned Error Patterns:
 ${learningsPrompt || '(No prior error patterns matching this command)'}
 ${contextMemories.join('\n')}
 
-INSTRUCTIONS:
+INSTRUCTIONS & STRICT SPECIALIST ALLOCATION RULES:
 1. Understand the user's intent deeply. Extract clear technical constraints.
-2. If the user instruction is dangerously ambiguous or missing critical requirements, set "clarificationNeeded": true and provide a specific question with options.
-3. If instruction is actionable, design a robust multi-agent execution roadmap across specialists (Research, Engineering, Automation, QA, Memory).
+2. STRICT DOMAIN RESPONSIBILITY RULES (NEVER CONFUSE SPECIALISTS):
+   - agent_engineering (Iky): EXCLUSIVELY responsible for creating project directories, writing project files (write_file), coding APIs, backend/frontend implementation, bug fixes, and developer pre-checks. ALL project scaffolding and code writing MUST be assigned to agent_engineering, NEVER to agent_automation or agent_research!
+   - agent_qa (Rai): EXCLUSIVELY responsible for quality audits, running curl against endpoints, executing automated test scripts, checking syntax (node --check), and issuing APPROVED/REJECTED verdicts with technical root-cause diagnostics. ALL testing and verification MUST be assigned to agent_qa, NEVER to agent_research!
+   - agent_research (Dre): ONLY for external library documentation, architectural trade-offs, and multimodal image/document analysis. NEVER assign code creation or QA testing to Dre!
+   - agent_automation (Gus): ONLY for background cron jobs, schedulers, and CI/CD pipelines. NEVER assign application project scaffolding or coding to Gus!
+   - agent_memory (Dhea): For indexing deliverables into pgvector/Redis memory.
+3. If instruction is actionable, design a robust multi-agent execution roadmap across specialists according to the strict roles above.
 4. Specify the recommendedTool and toolArgs (exact bash command or file path) for each specialist step.
 5. Return ONLY a valid JSON object matching the planSchema.`;
 
@@ -122,37 +154,69 @@ INSTRUCTIONS:
 
     // Fallback: If no steps were generated and no clarification was requested, generate atomic steps
     if (steps.length === 0) {
-      steps.push(
-        {
-          stepIndex: 1,
-          assignedTo: AGENT_IDS.RESEARCH,
-          objective: `Analyze specifications, requirements, and necessary tools for: ${taskTitle}`,
-          expectedOutput: 'Technical strategy and asset plan.',
-          recommendedTool: 'none',
-        },
-        {
-          stepIndex: 2,
-          assignedTo: AGENT_IDS.ENGINEERING,
-          objective: `Generate scripts, create files, or execute operations for: ${taskTitle}`,
-          expectedOutput: 'Created project files and code deliverables.',
-          recommendedTool: 'execute_bash',
-          toolArgs: `mkdir -p ~/Projects && echo "Target directory verified: ~/Projects"`,
-        },
-        {
-          stepIndex: 3,
-          assignedTo: AGENT_IDS.QA,
-          objective: 'Validate generated artifacts, verify file presence, and check outputs.',
-          expectedOutput: 'QA approval verdict.',
-          recommendedTool: 'none',
-        },
-        {
-          stepIndex: 4,
-          assignedTo: AGENT_IDS.MEMORY,
-          objective: 'Persist project artifacts and tool execution outcomes in episodic memory.',
-          expectedOutput: 'Indexed memory records.',
-          recommendedTool: 'none',
-        }
+      const isDev = /api|server|fastify|express|laravel|test|crud|code|endpoint|buatkan|build|implement|scaffold|projek|project/i.test(
+        `${taskTitle} ${taskDesc}`
       );
+      const targetDir = extractTargetProjectDir(`${taskTitle} ${taskDesc}`);
+
+      if (isDev) {
+        steps.push(
+          {
+            stepIndex: 1,
+            assignedTo: AGENT_IDS.ENGINEERING,
+            objective: `Scaffold directory "${targetDir}", write modular source code, and create test script for: ${taskTitle}`,
+            expectedOutput: `Complete source code and test suite created in "${targetDir}".`,
+            recommendedTool: 'file_write',
+            toolArgs: `${targetDir}/server.js`,
+          },
+          {
+            stepIndex: 2,
+            assignedTo: AGENT_IDS.QA,
+            objective: `Verify syntax and execute endpoint testing via curl or automated test script in "${targetDir}"`,
+            expectedOutput: 'Comprehensive QA audit verdict and verification report.',
+            recommendedTool: 'execute_bash',
+            toolArgs: `node "${targetDir}/test.js"`,
+          },
+          {
+            stepIndex: 3,
+            assignedTo: AGENT_IDS.MEMORY,
+            objective: 'Persist verified deliverables, code architecture, and learnings into memory.',
+            expectedOutput: 'Indexed memory records.',
+            recommendedTool: 'none',
+          }
+        );
+      } else {
+        steps.push(
+          {
+            stepIndex: 1,
+            assignedTo: AGENT_IDS.RESEARCH,
+            objective: `Analyze specifications, requirements, and documentation for: ${taskTitle}`,
+            expectedOutput: 'Technical strategy and research brief.',
+            recommendedTool: 'none',
+          },
+          {
+            stepIndex: 2,
+            assignedTo: AGENT_IDS.ENGINEERING,
+            objective: `Execute implementation and create deliverables for: ${taskTitle}`,
+            expectedOutput: 'Created deliverables.',
+            recommendedTool: 'file_write',
+          },
+          {
+            stepIndex: 3,
+            assignedTo: AGENT_IDS.QA,
+            objective: 'Validate generated artifacts and verify constraints.',
+            expectedOutput: 'QA approval verdict.',
+            recommendedTool: 'none',
+          },
+          {
+            stepIndex: 4,
+            assignedTo: AGENT_IDS.MEMORY,
+            objective: 'Persist project artifacts in episodic memory.',
+            expectedOutput: 'Indexed memory records.',
+            recommendedTool: 'none',
+          }
+        );
+      }
     }
 
     await this.setStatus('working', `Roadmap created: ${steps.length} atomic specialist steps.`);
@@ -221,16 +285,19 @@ export class ResearchAgent extends BaseAgent {
   }
 
   public async execute(context: AgentContext): Promise<AgentExecutionResult> {
-    await this.setStatus('working', 'Surveying project directory, searching files, and analyzing documentation...');
-    await this.emitBubble('Analyzing attachments, project files, and documentation...', 3500);
+    await this.setStatus('working', 'Surveying technical documentation and library architecture...');
+    await this.emitBubble('Analyzing attachments, library documentation, and architecture constraints...', 3500);
 
-    // 1. Inspect local workspace directory structure
-    const dirList = await WorkspaceFsTools.listDirectory('', true, 2);
+    const targetDir = extractTargetProjectDir(`${context.task.title} ${context.task.description}`);
+    const resolvedTarget = WorkspaceFsTools.resolveSafePath(targetDir);
+
+    // 1. Inspect ONLY target project directory (NEVER internal server codebase)
+    const dirList = await WorkspaceFsTools.listDirectory(resolvedTarget, true, 2);
     await this.recordToolExecution(
       {
         toolName: 'file_list',
-        command: 'listDirectory("", recursive: true)',
-        parameters: { recursive: true },
+        command: `listDirectory("${targetDir}", recursive: true)`,
+        parameters: { directory: targetDir, recursive: true },
         success: dirList.success,
         stdout: dirList.output.slice(0, 600),
         stderr: dirList.error || '',
@@ -240,36 +307,24 @@ export class ResearchAgent extends BaseAgent {
       context.task.id
     );
 
-    // 2. Search codebase if there are specific keywords
-    let codebaseMatches = '';
-    const keywords = context.task.title.split(' ').filter((w) => w.length > 3);
-    if (keywords.length > 0) {
-      const searchRes = await WorkspaceFsTools.searchFiles(keywords[0]);
-      if (searchRes.success && searchRes.output) {
-        codebaseMatches = searchRes.output.slice(0, 500);
-      }
-    }
-
-    // 3. Technical docs search
+    // 2. Search docs on official standards
     const docResult = await OfficeTools.searchWebDocs(context.task.title);
 
-    // 4. Multimodal inspection of any task attachments
+    // 3. Multimodal inspection of any task attachments
     const inspections = (context.task.attachments || []).map((att) => AttachmentAnalyzer.inspectAttachment(att));
 
-    const prompt = `Conduct comprehensive research and context discovery for:
+    const prompt = `Conduct targeted research and technical discovery for:
 Task Title: ${context.task.title}
 Task Details: ${context.task.description}
+Target Project Directory: ${targetDir}
 
-Workspace Project Structure:
-${dirList.output.slice(0, 700)}
-
-Codebase Matches:
-${codebaseMatches || '(No existing codebase matches)'}
+Target Directory Structure:
+${dirList.output.slice(0, 700) || '(Target directory not yet created or currently empty)'}
 
 Technical Docs Reference:
 ${docResult.output}
 
-Provide a crisp Research Brief with architectural patterns, dependency requirements, and recommendations for Engineering and Automation.`;
+Provide a crisp Research Brief with architectural patterns, library API standards, and recommendations for Iky (Engineering) to implement and Rai (QA) to test.`;
 
     const { textPrompt, imageAttachments } = AttachmentAnalyzer.buildMultimodalMessages(prompt, inspections);
 
@@ -279,14 +334,14 @@ Provide a crisp Research Brief with architectural patterns, dependency requireme
     });
 
     await this.setStatus('idle', 'Research brief completed.');
-    await this.emitBubble('Research brief ready. Forwarding context to Engineering & Automation.', 3000);
+    await this.emitBubble('Research brief ready. Forwarding context to Engineering & QA.', 3000);
 
     return {
       agentId: this.agentId,
       success: true,
       output: res.text,
-      thought: 'Surveyed workspace filesystem, analyzed attachments, and prepared technical blueprint.',
-      metadata: { workspaceFilesFound: Array.isArray(dirList.data) ? dirList.data.length : 0 },
+      thought: 'Surveyed target project directory, analyzed attachments, and prepared technical blueprint.',
+      metadata: { targetDirectory: targetDir, workspaceFilesFound: Array.isArray(dirList.data) ? dirList.data.length : 0 },
     };
   }
 }
@@ -300,21 +355,32 @@ export class EngineeringAgent extends BaseAgent {
 
   public async execute(context: AgentContext): Promise<AgentExecutionResult> {
     await this.setStatus('working', 'Drafting implementation, writing files, and validating syntax...');
-    await this.emitBubble('Generating production-ready code & saving to local workspace...', 4000);
+    await this.emitBubble('Generating production-ready code & saving to project directory...', 4000);
+
+    const targetDir = extractTargetProjectDir(`${context.task.title} ${context.task.description}`);
+    const resolvedTarget = WorkspaceFsTools.resolveSafePath(targetDir);
 
     const prompt = `As Senior Engineer (Iky), implement the complete code solution for:
 Task: ${context.task.title}
 Requirements: ${context.task.description}
+Target Directory: "${targetDir}" (${resolvedTarget})
+
 Previous Specialist Findings:
 ${JSON.stringify(context.previousOutputs || {})}
 
-Return a structured JSON with:
-- "summary": string
-- "files": array of objects with:
-  - "filePath": relative path inside workspace (e.g. "src/index.ts", "package.json", "app/Models/User.php")
-  - "content": complete code contents (fully written, no placeholders)
-  - "description": what this file implements
-- "buildOrTestCommand": optional command to compile or test (e.g. "tsc --noEmit" or "node -c")`;
+CRITICAL ARCHITECTURE GUIDELINES FOR IN-MEMORY / NO-DATABASE APIS:
+1. When building an API without a database:
+   - Store records in a module-level in-memory Map: const students = new Map();
+   - Implement complete CRUD route handlers (POST, GET all, GET by ID, PUT, DELETE).
+   - CRITICAL TEST SCRIPT: Create an automated verification script "test.js" using Fastify built-in app.inject() (or in-process runner) where POST -> GET all -> GET by id -> PUT -> DELETE runs sequentially in ONE contiguous execution process, guaranteeing that in-memory state persists across test steps!
+   - Also create a "test-curl.sh" script with sample curl calls for manual terminal inspection.
+2. Return a structured JSON with:
+   - "summary": string
+   - "files": array of objects with:
+     - "filePath": relative path inside "${targetDir}" (e.g. "package.json", "server.js", "test.js", "test-curl.sh")
+     - "content": complete runnable code contents (fully written, no placeholders or pseudo-code)
+     - "description": what this file implements
+   - "buildOrTestCommand": optional command to compile or test (e.g. "node test.js" or "node --check server.js")`;
 
     const codePlanSchema = z.object({
       summary: z.string().default('Engineering implementation'),
@@ -337,16 +403,20 @@ Return a structured JSON with:
     const createdFiles: string[] = [];
     const filesToCreate = Array.isArray(solution?.data?.files) ? solution.data.files : [];
 
-    // Write real files into the local workspace directory!
+    // Write real files into the targeted project directory!
     for (const f of filesToCreate) {
-      const writeRes = await WorkspaceFsTools.writeFile(f.filePath, f.content);
+      const targetFilePath = path.isAbsolute(f.filePath) || f.filePath.startsWith('~')
+        ? f.filePath
+        : path.join(resolvedTarget, f.filePath);
+
+      const writeRes = await WorkspaceFsTools.writeFile(targetFilePath, f.content);
       if (writeRes.success) {
-        createdFiles.push(f.filePath);
+        createdFiles.push(targetFilePath);
         await this.recordToolExecution(
           {
             toolName: 'file_write',
-            command: `writeFile("${f.filePath}")`,
-            parameters: { filePath: f.filePath, bytes: f.content.length },
+            command: `writeFile("${targetFilePath}")`,
+            parameters: { filePath: targetFilePath, bytes: f.content.length },
             success: true,
             stdout: writeRes.output,
             stderr: '',
@@ -361,13 +431,13 @@ Return a structured JSON with:
     // Run compile or build check if suggested
     let buildOutput = '';
     if (solution.data.buildOrTestCommand) {
-      const execRes = await OfficeTools.executeBash(solution.data.buildOrTestCommand);
+      const execRes = await OfficeTools.executeBash(solution.data.buildOrTestCommand, resolvedTarget);
       buildOutput = `\n[Build/Check: ${solution.data.buildOrTestCommand}]: Exit ${execRes.exitCode}\n${execRes.stdout || execRes.stderr}`;
       await this.recordToolExecution(
         {
           toolName: 'execute_bash',
           command: solution.data.buildOrTestCommand,
-          parameters: { command: solution.data.buildOrTestCommand },
+          parameters: { command: solution.data.buildOrTestCommand, cwd: resolvedTarget },
           success: execRes.success,
           stdout: execRes.stdout,
           stderr: execRes.stderr,
@@ -378,15 +448,15 @@ Return a structured JSON with:
       );
     }
 
-    await this.setStatus('idle', `Engineered ${createdFiles.length} file(s) in workspace.`);
-    await this.emitBubble(`Generated & verified ${createdFiles.length} project file(s). Handing to QA.`, 3000);
+    await this.setStatus('idle', `Engineered ${createdFiles.length} file(s) in "${targetDir}".`);
+    await this.emitBubble(`Generated & verified ${createdFiles.length} project file(s) in ${targetDir}. Handing to QA.`, 3000);
 
     return {
       agentId: this.agentId,
-      success: true,
-      output: `### Engineering Implementation (${solution.data.summary})\n\n**Files Created in Workspace:**\n${createdFiles.map((f) => `- \`${f}\``).join('\n')}\n${buildOutput}`,
-      thought: `Implemented ${createdFiles.length} project files directly in workspace with full typed code.`,
-      metadata: { files: createdFiles },
+      success: createdFiles.length > 0,
+      output: `### Engineering Implementation (${solution.data.summary})\n\n**Target Directory:** \`${targetDir}\`\n\n**Files Created on Disk:**\n${createdFiles.map((f) => `- \`${f}\``).join('\n')}\n${buildOutput}`,
+      thought: `Implemented ${createdFiles.length} project files directly in ${targetDir} with full typed code.`,
+      metadata: { targetDirectory: targetDir, files: createdFiles },
     };
   }
 }
@@ -399,19 +469,24 @@ export class AutomationAgent extends BaseAgent {
   }
 
   public async execute(context: AgentContext): Promise<AgentExecutionResult> {
-    await this.setStatus('working', 'Executing shell commands, package management, and runtime operations...');
-    await this.emitBubble('Executing terminal commands (npm/bun/artisan/shell)...', 3500);
+    await this.setStatus('working', 'Executing operational automation and background jobs...');
+    await this.emitBubble('Executing background schedules and operational pipelines...', 3500);
 
-    // Determine what shell commands to execute
-    const prompt = `As Automation Architect (Gus), specify the exact shell commands needed to build, setup, migrate, or test this task:
+    const targetDir = extractTargetProjectDir(`${context.task.title} ${context.task.description}`);
+    const resolvedTarget = WorkspaceFsTools.resolveSafePath(targetDir);
+
+    const prompt = `As Automation Architect (Gus), specify any background automation, cron schedules, or CI/CD pipelines needed for this task:
 Task: ${context.task.title}
 Requirements: ${context.task.description}
+Target Directory: "${targetDir}"
 Engineering Deliverables:
 ${JSON.stringify(context.previousOutputs || {})}
 
+NOTE: Application code, project files, and API endpoints are already created by Iky. Gus focuses strictly on operational automation.
+
 Return a structured JSON with:
-- "commandList": array of strings (exact bash commands to run in workspace, e.g. "pnpm install", "php artisan migrate", "npm test", "git status", "mkdir -p dist")
-- "rationale": explanation of what these commands achieve`;
+- "commandList": array of strings (exact background/pipeline bash commands to run, e.g. "git status", "pnpm audit")
+- "rationale": explanation of what these automation commands achieve`;
 
     const cmdSchema = z.object({
       commandList: z.array(z.string()).default([]),
@@ -428,50 +503,17 @@ Return a structured JSON with:
 
     for (const cmd of commandList) {
       await this.setStatus('working', `Running: ${cmd.slice(0, 50)}...`, context.task.id);
+      let execRes = await OfficeTools.executeBash(cmd, resolvedTarget);
 
-      // Check for known past error solutions before running
-      const learnings = OfficeTools.recallLearnings(cmd);
-      if (learnings.length > 0) {
-        await this.emitBubble(`[Recalled Learning]: ${learnings[0].resolutionStrategy.slice(0, 60)}...`, 2500, 'thought');
-      }
-
-      // Execute real shell command in workspace!
-      let execRes = await OfficeTools.executeBash(cmd);
-
-      // Adaptive error recovery loop: If failed, attempt recovery and record learning!
       if (!execRes.success) {
         overallSuccess = false;
-        const errPattern = execRes.errorSnippet || execRes.stderr.slice(0, 100);
-
-        // Record error learning
-        await OfficeTools.recordLearning(
-          cmd,
-          errPattern,
-          `Encountered exit ${execRes.exitCode}: ${errPattern.slice(0, 120)}`,
-          ['shell', 'failure', cmd.split(' ')[0]]
-        );
-
-        // Adaptive recovery: if missing node_modules or dependencies, auto-run install
-        if (errPattern.includes('MODULE_NOT_FOUND') || errPattern.includes('Cannot find module')) {
-          await this.emitBubble('[Alert] Module missing. Auto-recovering via pnpm install...', 3000, 'alert');
-          const recoveryRes = await OfficeTools.executeBash('pnpm install');
-          if (recoveryRes.success) {
-            // Retry original command
-            execRes = await OfficeTools.executeBash(cmd);
-            if (execRes.success) {
-              overallSuccess = true;
-              await OfficeTools.recordLearning(cmd, errPattern, 'Resolved by running pnpm install before command.', ['recovery', 'pnpm']);
-            }
-          }
-        }
       }
 
-      // Record tool execution
       await this.recordToolExecution(
         {
           toolName: 'execute_bash',
           command: cmd,
-          parameters: { command: cmd },
+          parameters: { command: cmd, cwd: resolvedTarget },
           success: execRes.success,
           stdout: execRes.stdout.slice(0, 600),
           stderr: execRes.stderr.slice(0, 600),
@@ -486,14 +528,12 @@ Return a structured JSON with:
       );
     }
 
-    await this.setStatus('idle', 'Shell commands execution finished.');
-    await this.emitBubble(`Shell automation completed (${commandList.length} commands).`, 3000);
-
+    await this.setStatus('idle', 'Automation tasks completed.');
     return {
       agentId: this.agentId,
       success: overallSuccess,
-      output: `### Automation Execution Report (${parsed?.data?.rationale || 'Shell execution'})\n\n${executionReports.join('\n\n') || '(No shell commands required)'}`,
-      thought: `Ran ${commandList.length} shell commands with adaptive error recovery.`,
+      output: `### Automation Execution Report (${parsed?.data?.rationale || 'Operational tasks'})\n\n${executionReports.join('\n\n') || '(No additional background tasks required)'}`,
+      thought: `Ran ${commandList.length} operational automation commands.`,
       metadata: { commandCount: commandList.length, success: overallSuccess },
     };
   }
@@ -507,29 +547,114 @@ export class QaAgent extends BaseAgent {
   }
 
   public async execute(context: AgentContext): Promise<AgentExecutionResult> {
-    await this.setStatus('reviewing', 'Auditing specialist outputs, verifying files, and evaluating constraints...');
-    await this.emitBubble('Auditing code quality, test results, and file existence...', 3500);
+    await this.setStatus('reviewing', 'Auditing deliverables, verifying physical files, and executing test suites...');
+    await this.emitBubble('Auditing code quality, testing endpoints, and verifying requirements...', 3500);
+
+    const targetDir = extractTargetProjectDir(`${context.task.title} ${context.task.description}`);
+    const resolvedTarget = WorkspaceFsTools.resolveSafePath(targetDir);
+
+    // 1. Verify physical files exist in target project directory
+    const dirList = await WorkspaceFsTools.listDirectory(resolvedTarget, true, 2);
+    const existingFileCount = Array.isArray(dirList.data) ? dirList.data.length : 0;
+
+    // 2. Physical test execution in target project directory
+    let testReport = '';
+    let testSuccess = true;
+    const testJsPath = path.join(resolvedTarget, 'test.js');
+    const serverJsPath = path.join(resolvedTarget, 'server.js');
+    const srcServerJsPath = path.join(resolvedTarget, 'src', 'server.js');
+    const effectiveServerJs = fsSync.existsSync(srcServerJsPath)
+      ? srcServerJsPath
+      : fsSync.existsSync(serverJsPath)
+        ? serverJsPath
+        : null;
+
+    // Syntax check
+    if (effectiveServerJs) {
+      const syntaxCheck = await OfficeTools.executeBash(`node --check "${effectiveServerJs}"`, resolvedTarget);
+      await this.recordToolExecution(
+        {
+          toolName: 'execute_bash',
+          command: `node --check "${effectiveServerJs}"`,
+          parameters: { command: `node --check "${effectiveServerJs}"`, cwd: resolvedTarget },
+          success: syntaxCheck.success,
+          stdout: syntaxCheck.stdout,
+          stderr: syntaxCheck.stderr,
+          exitCode: syntaxCheck.exitCode,
+          executionTimeMs: syntaxCheck.durationMs,
+        },
+        context.task.id
+      );
+      if (!syntaxCheck.success) {
+        testSuccess = false;
+        testReport += `\n- [Syntax Error in ${path.basename(effectiveServerJs)}]: ${syntaxCheck.stderr || syntaxCheck.stdout}`;
+      } else {
+        testReport += `\n- [Syntax Check Passed]: ${path.basename(effectiveServerJs)} syntax is valid (exitCode: 0).`;
+      }
+    }
+
+    // Automated test execution
+    if (fsSync.existsSync(testJsPath)) {
+      const testRun = await OfficeTools.executeBash(`node "${testJsPath}"`, resolvedTarget);
+      await this.recordToolExecution(
+        {
+          toolName: 'execute_bash',
+          command: `node "${testJsPath}"`,
+          parameters: { command: `node "${testJsPath}"`, cwd: resolvedTarget },
+          success: testRun.success,
+          stdout: testRun.stdout.slice(0, 800),
+          stderr: testRun.stderr.slice(0, 800),
+          exitCode: testRun.exitCode,
+          executionTimeMs: testRun.durationMs,
+        },
+        context.task.id
+      );
+      if (!testRun.success) {
+        testSuccess = false;
+        testReport += `\n- [Test Suite Failed (exitCode: ${testRun.exitCode})]:\n${testRun.stderr || testRun.stdout}`;
+      } else {
+        testReport += `\n- [Test Suite Passed]: All automated endpoint tests completed successfully (exitCode: 0). Output:\n${testRun.stdout.slice(0, 400)}`;
+      }
+    }
 
     const combinedOutput = JSON.stringify(context.previousOutputs || {});
     const evaluation = QaEvaluator.evaluateResult(context.task.title, combinedOutput);
 
-    // Verify workspace files physically exist
-    const dirList = await WorkspaceFsTools.listDirectory('', true, 2);
-    const existingFileCount = Array.isArray(dirList.data) ? dirList.data.length : 0;
+    // If files are missing or test execution failed, reject with technical diagnostic
+    const isApproved = existingFileCount > 0 && testSuccess && evaluation.verdict === 'APPROVED';
+    const verdict = isApproved ? 'APPROVED' : 'REJECTED';
 
-    const isApproved = evaluation.verdict === 'APPROVED' && existingFileCount >= 0;
-    await this.setStatus(isApproved ? 'idle' : 'blocked', `QA Verdict: ${evaluation.verdict}`);
+    let diagnosticFeedback = '';
+    if (!isApproved) {
+      if (existingFileCount === 0) {
+        diagnosticFeedback = `Direktori target "${targetDir}" belum memiliki berkas proyek. Iky wajib menjalankan write_file untuk membuat berkas di disk.`;
+      } else if (!testSuccess) {
+        diagnosticFeedback = `Pengujian endpoint atau pemeriksaan sintaks gagal. ${testReport}\nCATATAN TEKNIS PERSISTENSI MEMORY: Pada API tanpa database, data disimpan pada Map di memory. Pastikan pengujian endpoint dilakukan dalam 1 siklus runtime (seperti Fastify app.inject() pada test.js) agar data POST tidak hilang saat pengujian GET berikutnya!`;
+      } else {
+        diagnosticFeedback = evaluation.issues.join('\n');
+      }
+    }
+
+    await this.setStatus(isApproved ? 'idle' : 'blocked', `QA Verdict: ${verdict}`);
     await this.emitBubble(
-      `QA Verdict: ${evaluation.verdict} (Score: ${(evaluation.confidenceScore * 100).toFixed(0)}%, Verified Files: ${existingFileCount})`,
+      `QA Verdict: ${verdict} (Verified Files: ${existingFileCount}, Target: ${targetDir})`,
       3500
     );
 
     return {
       agentId: this.agentId,
       success: isApproved,
-      output: `### QA & Verification Audit\n**Verdict:** \`${evaluation.verdict}\`\n**Confidence Score:** ${(evaluation.confidenceScore * 100).toFixed(0)}%\n\n**Strengths:**\n${evaluation.strengths.map((s) => `- ${s}`).join('\n')}\n\n**Issues / Recommendations:**\n${evaluation.issues.map((i) => `- ${i}`).join('\n') || '- None: All constraints and acceptance criteria satisfied.'}`,
-      thought: `Audit completed with verdict ${evaluation.verdict}. Verified file presence in workspace.`,
-      metadata: { evaluation, verifiedFiles: existingFileCount },
+      output: `### QA & Verification Audit (Rai - Critic Specialist)
+**Verdict:** \`${verdict}\`
+**Target Directory:** \`${targetDir}\`
+**Verified Physical Files:** ${existingFileCount}
+
+**Hasil Pengujian & Verifikasi Fisik:**
+${testReport || '- Pemeriksaan integritas berkas selesai.'}
+
+${isApproved ? '**Status:** Seluruh persyaratan Boss terverifikasi dan memenuhi standar produksi.' : `**Diagnosa & Tindakan Perbaikan Diperlukan (Feedback untuk Iky):**\n${diagnosticFeedback}`}`,
+      thought: `QA audit finished with verdict ${verdict}. Verified ${existingFileCount} files in ${targetDir}.`,
+      metadata: { verdict, verifiedFiles: existingFileCount, targetDirectory: targetDir },
     };
   }
 }

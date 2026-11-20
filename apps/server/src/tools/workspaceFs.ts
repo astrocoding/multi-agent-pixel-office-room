@@ -20,6 +20,15 @@ export interface FsToolResult {
 
 export class WorkspaceFsTools {
   private static workspaceRoot: string = path.resolve(process.cwd(), 'workspace');
+  private static defaultBaseDir: string | null = null;
+
+  public static setDefaultBaseDir(baseDir: string | null): void {
+    this.defaultBaseDir = baseDir;
+  }
+
+  public static getDefaultBaseDir(): string | null {
+    return this.defaultBaseDir;
+  }
 
   public static setWorkspaceRoot(customPath: string): void {
     this.workspaceRoot = path.resolve(customPath);
@@ -35,10 +44,15 @@ export class WorkspaceFsTools {
     return this.workspaceRoot;
   }
 
-  // Path resolution supporting workspace root, home (~), and absolute user paths
-  public static resolveSafePath(targetRelPath: string): string {
+  // Path resolution supporting defaultBaseDir, workspace root, home (~), and absolute user paths
+  public static resolveSafePath(targetRelPath: string, customBaseDir?: string): string {
     const trimmed = (targetRelPath || '').trim();
+    const effectiveBase = customBaseDir || this.defaultBaseDir;
+
     if (!trimmed) {
+      if (effectiveBase) {
+        return this.resolveSafePath(effectiveBase);
+      }
       return this.getWorkspaceRoot();
     }
     // Expand ~ to user home directory (e.g. ~/Projects -> /Users/zaenalalfian/Projects)
@@ -50,14 +64,18 @@ export class WorkspaceFsTools {
     if (path.isAbsolute(trimmed)) {
       return path.resolve(trimmed);
     }
+    if (effectiveBase) {
+      const resolvedBase = this.resolveSafePath(effectiveBase);
+      return path.resolve(resolvedBase, trimmed);
+    }
     const root = this.getWorkspaceRoot();
     return path.resolve(root, trimmed);
   }
 
   // 1. Read file
-  public static async readFile(filePath: string, maxBytes = 250_000): Promise<FsToolResult> {
+  public static async readFile(filePath: string, maxBytes = 250_000, customBaseDir?: string): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(filePath);
+      const fullPath = this.resolveSafePath(filePath, customBaseDir);
       const stat = await fs.stat(fullPath);
       if (stat.isDirectory()) {
         return { success: false, output: `Path "${filePath}" is a directory, not a file.` };
@@ -82,9 +100,9 @@ export class WorkspaceFsTools {
   }
 
   // 2. Write or create file
-  public static async writeFile(filePath: string, content: string): Promise<FsToolResult> {
+  public static async writeFile(filePath: string, content: string, customBaseDir?: string): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(filePath);
+      const fullPath = this.resolveSafePath(filePath, customBaseDir);
       const parentDir = path.dirname(fullPath);
       await fs.mkdir(parentDir, { recursive: true });
       await fs.writeFile(fullPath, content, 'utf-8');
@@ -100,9 +118,9 @@ export class WorkspaceFsTools {
   }
 
   // 3. Precision surgical edit
-  public static async editFile(filePath: string, target: string, replacement: string): Promise<FsToolResult> {
+  public static async editFile(filePath: string, target: string, replacement: string, customBaseDir?: string): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(filePath);
+      const fullPath = this.resolveSafePath(filePath, customBaseDir);
       const content = await fs.readFile(fullPath, 'utf-8');
       if (!content.includes(target)) {
         return {
@@ -128,10 +146,11 @@ export class WorkspaceFsTools {
     dirPath = '',
     recursive = false,
     maxDepth = 3,
-    currentDepth = 0
+    currentDepth = 0,
+    customBaseDir?: string
   ): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(dirPath);
+      const fullPath = this.resolveSafePath(dirPath, customBaseDir);
       if (!fsSync.existsSync(fullPath)) {
         return { success: false, output: `Directory "${dirPath}" does not exist.` };
       }
@@ -162,7 +181,7 @@ export class WorkspaceFsTools {
         });
 
         if (recursive && isDir && currentDepth < maxDepth) {
-          const sub = await this.listDirectory(rel, true, maxDepth, currentDepth + 1);
+          const sub = await this.listDirectory(rel, true, maxDepth, currentDepth + 1, customBaseDir);
           if (sub.success && Array.isArray(sub.data)) {
             items.push(...(sub.data as FileItemInfo[]));
           }
@@ -187,9 +206,9 @@ export class WorkspaceFsTools {
   }
 
   // 5. Create directory
-  public static async createDirectory(dirPath: string): Promise<FsToolResult> {
+  public static async createDirectory(dirPath: string, customBaseDir?: string): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(dirPath);
+      const fullPath = this.resolveSafePath(dirPath, customBaseDir);
       await fs.mkdir(fullPath, { recursive: true });
       return {
         success: true,
@@ -202,9 +221,9 @@ export class WorkspaceFsTools {
   }
 
   // 6. Delete file or directory
-  public static async deleteFile(filePath: string): Promise<FsToolResult> {
+  public static async deleteFile(filePath: string, customBaseDir?: string): Promise<FsToolResult> {
     try {
-      const fullPath = this.resolveSafePath(filePath);
+      const fullPath = this.resolveSafePath(filePath, customBaseDir);
       const stat = await fs.stat(fullPath);
       if (stat.isDirectory()) {
         await fs.rm(fullPath, { recursive: true, force: true });

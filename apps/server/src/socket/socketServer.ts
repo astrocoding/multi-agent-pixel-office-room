@@ -149,24 +149,21 @@ export class SocketServerBridge {
         let mentionedAgentId: AgentId | undefined = undefined;
 
         // Auto-detect mention of agents by @Name
-        if (/@zen\b/i.test(text) || /@atlas\b/i.test(text)) {
+        const detectedMentions: AgentId[] = [];
+        if (/@zen\b|@atlas\b/i.test(text)) detectedMentions.push(AGENT_IDS.LEADER);
+        if (/@dre\b|@ada\b/i.test(text)) detectedMentions.push(AGENT_IDS.RESEARCH);
+        if (/@iky\b|@torvalds\b/i.test(text)) detectedMentions.push(AGENT_IDS.ENGINEERING);
+        if (/@gus\b|@eca\b|@volt\b/i.test(text)) detectedMentions.push(AGENT_IDS.AUTOMATION);
+        if (/@rai\b|@iris\b/i.test(text)) detectedMentions.push(AGENT_IDS.QA);
+        if (/@dhea\b|@mnemo\b/i.test(text)) detectedMentions.push(AGENT_IDS.MEMORY);
+
+        if (detectedMentions.length > 1) {
+          // Multi-agent directive: Zen as Chief of Staff coordinates the requested team
           recipient = AGENT_IDS.LEADER;
           mentionedAgentId = AGENT_IDS.LEADER;
-        } else if (/@dre\b/i.test(text) || /@ada\b/i.test(text)) {
-          recipient = AGENT_IDS.RESEARCH;
-          mentionedAgentId = AGENT_IDS.RESEARCH;
-        } else if (/@iky\b/i.test(text) || /@torvalds\b/i.test(text)) {
-          recipient = AGENT_IDS.ENGINEERING;
-          mentionedAgentId = AGENT_IDS.ENGINEERING;
-        } else if (/@gus\b/i.test(text) || /@eca\b/i.test(text) || /@volt\b/i.test(text)) {
-          recipient = AGENT_IDS.AUTOMATION;
-          mentionedAgentId = AGENT_IDS.AUTOMATION;
-        } else if (/@rai\b/i.test(text) || /@iris\b/i.test(text)) {
-          recipient = AGENT_IDS.QA;
-          mentionedAgentId = AGENT_IDS.QA;
-        } else if (/@dhea\b/i.test(text) || /@mnemo\b/i.test(text)) {
-          recipient = AGENT_IDS.MEMORY;
-          mentionedAgentId = AGENT_IDS.MEMORY;
+        } else if (detectedMentions.length === 1) {
+          recipient = detectedMentions[0];
+          mentionedAgentId = detectedMentions[0];
         } else if (recipient) {
           mentionedAgentId = recipient;
         }

@@ -101,11 +101,18 @@ export function registerRoutes(
       inputPayload: { priority: parsed.data.priority, attachments: parsed.data.attachments || [] },
     });
 
-    // Run orchestrator asynchronously in background
+    // Run autonomous multi-agent workflow asynchronously in background
     setTimeout(() => {
-      orchestrator.runTask(newTask).catch((err) => {
-        console.error('[Orchestrator] Error executing task:', err);
-      });
+      if (adkOfficeService) {
+        adkOfficeService.executeTask(newTask).catch((err) => {
+          console.error('[Agent Office Team] Task execution failure, falling back to orchestrator:', err);
+          orchestrator.runTask(newTask).catch(console.error);
+        });
+      } else {
+        orchestrator.runTask(newTask).catch((err) => {
+          console.error('[Orchestrator] Error executing task:', err);
+        });
+      }
     }, 100);
 
     return reply.status(201).send({ success: true, taskId, task: newTask });

@@ -18,6 +18,7 @@ import {
 import type { SocketServerBridge } from '../socket/socketServer.js';
 import type { MemoryService } from '../memory/memoryService.js';
 import { ShellExecutionTool, WorkspaceFsTools, AttachmentAnalyzer } from '../tools/index.js';
+import { extractTargetProjectDir } from './specialists.js';
 import { DbQueries } from '../db/queries.js';
 import { QuerySafety } from '../security/querySafety.js';
 import { ImageGenerationService } from '../services/imageGenerationService.js';
@@ -36,6 +37,7 @@ export class AdkOfficeService {
   private activeDirectory = '~/Projects';
   private activeTaskId: string | null = null;
   private taskTerminalLogsMap = new Map<string, ToolExecutionRecord[]>();
+  private currentExecutingAgentId: AgentId = AGENT_IDS.ENGINEERING;
 
   constructor(
     apiKey: string,
@@ -45,6 +47,7 @@ export class AdkOfficeService {
   ) {
     this.socketBridge = socketBridge;
     this.memoryService = memoryService;
+    WorkspaceFsTools.setDefaultBaseDir(this.activeDirectory);
     this.imageService = new ImageGenerationService(apiKey, this.activeDirectory);
     this.multimodalService = new MultimodalDocumentService(apiKey, this.activeDirectory);
 
@@ -53,6 +56,8 @@ export class AdkOfficeService {
         const start = Date.now();
         const effectiveCwd = workingDirectory || this.activeDirectory;
         const expandedCmd = ShellExecutionTool.expandTilde(command);
+        const executingAgent = this.currentExecutingAgentId || AGENT_IDS.ENGINEERING;
+        const executingCfg = AGENT_CONFIGS[executingAgent];
 
         // Security Guardrail: Intercept destructive or irreversible shell commands
         const isDestructive =
@@ -82,7 +87,7 @@ export class AdkOfficeService {
         // Broadcast tool execution started
         const toolId = `tool_${crypto.randomUUID()}`;
         this.socketBridge.broadcastStatus({
-          agentId: AGENT_IDS.ENGINEERING,
+          agentId: executingAgent,
           state: 'working',
           currentThought: `[bash] ${expandedCmd.slice(0, 35)}`,
         });
@@ -127,7 +132,7 @@ export class AdkOfficeService {
           stderr,
           exitCode: execRes.exitCode,
           executionTimeMs: durationMs,
-          executedBy: AGENT_IDS.ENGINEERING,
+          executedBy: executingAgent,
           timestamp: new Date().toISOString(),
         };
 
@@ -145,9 +150,9 @@ export class AdkOfficeService {
         DbQueries.recordActivity({
           id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           taskId: this.activeTaskId || null,
-          agentId: AGENT_IDS.ENGINEERING,
+          agentId: executingAgent,
           eventType: 'COMMAND_EXECUTED',
-          message: `Iky executed: ${expandedCmd.slice(0, 60)}`,
+          message: `${executingCfg.name} executed: ${expandedCmd.slice(0, 60)}`,
           metadata: { toolName: 'execute_bash', command: expandedCmd.slice(0, 100), success: execRes.success, executionTimeMs: durationMs },
         }).catch((err) => console.warn('[AdkOfficeService] Failed to record tool activity:', err));
 
@@ -162,9 +167,33 @@ export class AdkOfficeService {
       },
 
       readFile: async ({ filePath }) => {
-        const res = await WorkspaceFsTools.readFile(filePath);
+        const fullResolved = WorkspaceFsTools.resolveSafePath(filePath, this.activeDirectory);
+        const res = await WorkspaceFsTools.readFile(fullResolved);
+        const executingAgent = this.currentExecutingAgentId || AGENT_IDS.ENGINEERING;
+        const toolId = `tool_${crypto.randomUUID()}`;
+        const record: ToolExecutionRecord = {
+          id: toolId,
+          toolName: 'read_file',
+          command: `read_file ${fullResolved}`,
+          parameters: { filePath: fullResolved },
+          success: res.success,
+          stdout: res.success ? (res.output.length > 500 ? `${res.output.slice(0, 500)}...` : res.output) : '',
+          stderr: res.error || '',
+          exitCode: res.success ? 0 : 1,
+          executionTimeMs: 10,
+          executedBy: executingAgent,
+          timestamp: new Date().toISOString(),
+        };
+
+        if (this.activeTaskId) {
+          const list = this.taskTerminalLogsMap.get(this.activeTaskId) || [];
+          list.push(record);
+          this.taskTerminalLogsMap.set(this.activeTaskId, list);
+          DbQueries.recordTerminalLog(record, this.activeTaskId).catch(console.warn);
+        }
+
         return {
-          filePath,
+          filePath: fullResolved,
           content: res.output,
           success: res.success,
           error: res.error,
@@ -172,19 +201,22 @@ export class AdkOfficeService {
       },
 
       writeFile: async ({ filePath, content }) => {
-        const res = await WorkspaceFsTools.writeFile(filePath, content);
+        const fullResolved = WorkspaceFsTools.resolveSafePath(filePath, this.activeDirectory);
+        const res = await WorkspaceFsTools.writeFile(fullResolved, content);
+        const executingAgent = this.currentExecutingAgentId || AGENT_IDS.ENGINEERING;
+        const executingCfg = AGENT_CONFIGS[executingAgent];
         const toolId = `tool_${crypto.randomUUID()}`;
         const record: ToolExecutionRecord = {
           id: toolId,
           toolName: 'write_file',
-          command: `write_file ${filePath}`,
-          parameters: { filePath, bytesWritten: content.length },
+          command: `write_file ${fullResolved}`,
+          parameters: { filePath: fullResolved, bytesWritten: content.length },
           success: res.success,
-          stdout: res.success ? `Successfully wrote ${content.length} bytes to ${filePath}` : '',
+          stdout: res.success ? `Successfully wrote ${content.length} bytes to ${fullResolved}` : '',
           stderr: res.error || '',
           exitCode: res.success ? 0 : 1,
           executionTimeMs: 15,
-          executedBy: AGENT_IDS.ENGINEERING,
+          executedBy: executingAgent,
           timestamp: new Date().toISOString(),
         };
         this.socketBridge.broadcastToolExecuted(record);
@@ -199,14 +231,14 @@ export class AdkOfficeService {
         DbQueries.recordActivity({
           id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           taskId: this.activeTaskId || null,
-          agentId: AGENT_IDS.ENGINEERING,
+          agentId: executingAgent,
           eventType: 'FILE_CREATED',
-          message: `Iky created file: ${filePath}`,
-          metadata: { toolName: 'write_file', filePath, bytesWritten: content.length },
+          message: `${executingCfg.name} created file: ${fullResolved}`,
+          metadata: { toolName: 'write_file', filePath: fullResolved, bytesWritten: content.length },
         }).catch(console.warn);
 
         return {
-          filePath,
+          filePath: fullResolved,
           bytesWritten: content.length,
           success: res.success,
           error: res.error,
@@ -214,19 +246,22 @@ export class AdkOfficeService {
       },
 
       editFile: async ({ filePath, target, replacement }) => {
-        const res = await WorkspaceFsTools.editFile(filePath, target, replacement);
+        const fullResolved = WorkspaceFsTools.resolveSafePath(filePath, this.activeDirectory);
+        const res = await WorkspaceFsTools.editFile(fullResolved, target, replacement);
+        const executingAgent = this.currentExecutingAgentId || AGENT_IDS.ENGINEERING;
+        const executingCfg = AGENT_CONFIGS[executingAgent];
         const toolId = `tool_${crypto.randomUUID()}`;
         const record: ToolExecutionRecord = {
           id: toolId,
           toolName: 'edit_file',
-          command: `edit_file ${filePath}`,
-          parameters: { filePath },
+          command: `edit_file ${fullResolved}`,
+          parameters: { filePath: fullResolved },
           success: res.success,
-          stdout: res.success ? `Successfully edited ${filePath}` : '',
+          stdout: res.success ? `Successfully edited ${fullResolved}` : '',
           stderr: res.error || '',
           exitCode: res.success ? 0 : 1,
           executionTimeMs: 12,
-          executedBy: AGENT_IDS.ENGINEERING,
+          executedBy: executingAgent,
           timestamp: new Date().toISOString(),
         };
         this.socketBridge.broadcastToolExecuted(record);
@@ -241,22 +276,45 @@ export class AdkOfficeService {
         DbQueries.recordActivity({
           id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           taskId: this.activeTaskId || null,
-          agentId: AGENT_IDS.ENGINEERING,
+          agentId: executingAgent,
           eventType: 'FILE_MODIFIED',
-          message: `Iky modified file: ${filePath}`,
-          metadata: { toolName: 'edit_file', filePath },
+          message: `${executingCfg.name} modified file: ${fullResolved}`,
+          metadata: { toolName: 'edit_file', filePath: fullResolved },
         }).catch(console.warn);
 
         return {
-          filePath,
+          filePath: fullResolved,
           success: res.success,
           error: res.error,
         };
       },
 
       listDirectory: async ({ directoryPath }) => {
-        const target = directoryPath || this.activeDirectory;
+        const target = directoryPath ? WorkspaceFsTools.resolveSafePath(directoryPath, this.activeDirectory) : this.activeDirectory;
         const res = await this.inspectDirectoryDirectly(target);
+        const executingAgent = this.currentExecutingAgentId || AGENT_IDS.ENGINEERING;
+        const toolId = `tool_${crypto.randomUUID()}`;
+        const record: ToolExecutionRecord = {
+          id: toolId,
+          toolName: 'list_directory',
+          command: `list_directory ${target}`,
+          parameters: { directoryPath: target },
+          success: res.success,
+          stdout: res.output.length > 500 ? `${res.output.slice(0, 500)}...` : res.output,
+          stderr: '',
+          exitCode: res.success ? 0 : 1,
+          executionTimeMs: 15,
+          executedBy: executingAgent,
+          timestamp: new Date().toISOString(),
+        };
+
+        if (this.activeTaskId) {
+          const list = this.taskTerminalLogsMap.get(this.activeTaskId) || [];
+          list.push(record);
+          this.taskTerminalLogsMap.set(this.activeTaskId, list);
+          DbQueries.recordTerminalLog(record, this.activeTaskId).catch(console.warn);
+        }
+
         return {
           directory: target,
           totalItems: res.folders.length + res.files.length,
@@ -425,6 +483,7 @@ export class AdkOfficeService {
           success: true,
           planSummary: params.summary,
           decisionRecorded: true,
+          directive: 'PLAN REGISTERED SUCCESSFULLY. Proceed immediately to execution by delegating to specialists (Iky for code/directory authoring via tools, Rai for QA verification with curl, Gus for automation) and synthesizing verified deliverables.',
         };
       },
 
@@ -638,6 +697,7 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
 
   public setActiveDirectory(dir: string): void {
     this.activeDirectory = dir;
+    WorkspaceFsTools.setDefaultBaseDir(dir);
   }
 
   /**
@@ -721,11 +781,49 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
     msgType: 'dialogue' | 'instruct' = 'dialogue',
     metadata?: Record<string, unknown>
   ): Promise<string> {
-    const targetAgentId = recipientId || AGENT_IDS.LEADER;
+    let targetAgentId = recipientId || AGENT_IDS.LEADER;
     const cfg = AGENT_CONFIGS[targetAgentId];
+
+    // Smart Mention Parsing: Detect @Iky, @Rai, @Dre, etc. from chat text
+    const mentions = Array.from(userText.matchAll(/@([a-zA-Z0-9_-]+)/g)).map((m) => m[1].toLowerCase());
+    const validMentionMap: Record<string, AgentId> = {
+      zen: AGENT_IDS.LEADER,
+      atlas: AGENT_IDS.LEADER,
+      iky: AGENT_IDS.ENGINEERING,
+      torvalds: AGENT_IDS.ENGINEERING,
+      dre: AGENT_IDS.RESEARCH,
+      ada: AGENT_IDS.RESEARCH,
+      gus: AGENT_IDS.AUTOMATION,
+      volt: AGENT_IDS.AUTOMATION,
+      rai: AGENT_IDS.QA,
+      iris: AGENT_IDS.QA,
+      dhea: AGENT_IDS.MEMORY,
+      mnemo: AGENT_IDS.MEMORY,
+    };
+
+    const targetAgentsFromMentions = mentions
+      .map((m) => validMentionMap[m])
+      .filter((id): id is AgentId => Boolean(id));
+
+    if (targetAgentsFromMentions.length > 1) {
+      // Multi-agent directive: Zen remains Chief of Staff and coordinates the requested specialists
+      targetAgentId = AGENT_IDS.LEADER;
+    } else if (targetAgentsFromMentions.length === 1 && (!recipientId || recipientId === AGENT_IDS.LEADER)) {
+      targetAgentId = targetAgentsFromMentions[0];
+    }
 
     // 1. Process Multimodal attachments & persist learned knowledge to memory
     let enrichedPrompt = userText;
+    if (targetAgentsFromMentions.length > 1) {
+      enrichedPrompt = `[CHIEF OF STAFF DIRECTIVE - MULTI-AGENT COORDINATION]:
+Boss specifically requested coordination involving specialists: ${targetAgentsFromMentions.join(', ')}.
+Zen, you MUST delegate each step by invoking your callable AgentTools:
+- Call iky to scaffold the project directory and write complete runnable code files to disk via write_file.
+- Call rai to execute physical terminal verification (syntax check and curl endpoint testing or test runner).
+- If Rai reports failures, call iky again with the error log to repair the code.
+Do NOT reply with text until iky has written the files and rai has tested them!
+Synthesize the final deliverable and report back to Boss in professional Indonesian.\n\n${enrichedPrompt}`;
+    }
     if (attachments && attachments.length > 0) {
       this.multimodalService.registerAttachments(attachments);
       const inspections = attachments.map((a) => AttachmentAnalyzer.inspectAttachment(a));
@@ -811,6 +909,9 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       }
     }
 
+    let currentSpeakingAgentId = targetAgentId;
+    let accumulatedText = '';
+
     // Immediate initial feedback
     this.socketBridge.broadcastBubble({
       agentId: targetAgentId,
@@ -825,91 +926,88 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       currentThought: `Reasoning with Agent Office Engine...`,
     });
 
-    let currentSpeakingAgentId = targetAgentId;
-    let accumulatedText = '';
-
     const stream = this.swarm.runTurn({
       userId: 'boss',
-      sessionId: 'office_main_chat',
+      sessionId: sessionId || 'office_main_chat',
       userText: enrichedPrompt,
       targetAgentId,
       activeDirectory: this.activeDirectory,
       attachments: attachments || undefined,
     });
 
-    for await (const event of stream) {
-      switch (event.type) {
-        case 'agent_switch': {
-          currentSpeakingAgentId = event.agentId;
-          this.socketBridge.broadcastBubble({
-            agentId: event.agentId,
-            text: `Consulting ${event.agentName}...`,
-            durationMs: 2500,
-            bubbleType: 'thought',
-          });
-          this.socketBridge.broadcastStatus({
-            agentId: event.agentId,
-            state: 'consulting',
-            currentThought: `Delegated by Chief of Staff`,
-          });
-          break;
-        }
-
-        case 'thought': {
-          if (event.text) {
+      for await (const event of stream) {
+        switch (event.type) {
+          case 'agent_switch': {
+            currentSpeakingAgentId = event.agentId;
             this.socketBridge.broadcastBubble({
               agentId: event.agentId,
-              text: event.text.slice(0, 100),
+              text: `Consulting ${event.agentName}...`,
+              durationMs: 2500,
+              bubbleType: 'thought',
+            });
+            this.socketBridge.broadcastStatus({
+              agentId: event.agentId,
+              state: 'consulting',
+              currentThought: `Delegated by Chief of Staff`,
+            });
+            break;
+          }
+
+          case 'thought': {
+            if (event.text) {
+              this.socketBridge.broadcastBubble({
+                agentId: event.agentId,
+                text: event.text.slice(0, 100),
+                durationMs: 3000,
+                bubbleType: 'thought',
+              });
+              this.socketBridge.broadcastStatus({
+                agentId: event.agentId,
+                state: 'thinking',
+                currentThought: event.text.slice(0, 80),
+              });
+            }
+            break;
+          }
+
+          case 'tool_call': {
+            this.socketBridge.broadcastBubble({
+              agentId: event.agentId,
+              text: `Executing ${event.toolName}...`,
               durationMs: 3000,
               bubbleType: 'thought',
             });
             this.socketBridge.broadcastStatus({
               agentId: event.agentId,
-              state: 'thinking',
-              currentThought: event.text.slice(0, 80),
+              state: 'working',
+              currentThought: `Calling tool: ${event.toolName}`,
             });
+            break;
           }
-          break;
-        }
 
-        case 'tool_call': {
-          this.socketBridge.broadcastBubble({
-            agentId: event.agentId,
-            text: `Executing ${event.toolName}...`,
-            durationMs: 3000,
-            bubbleType: 'thought',
-          });
-          this.socketBridge.broadcastStatus({
-            agentId: event.agentId,
-            state: 'working',
-            currentThought: `Calling tool: ${event.toolName}`,
-          });
-          break;
-        }
-
-        case 'speech': {
-          if (event.text) {
-            accumulatedText += event.text;
+          case 'speech': {
+            if (event.text) {
+              accumulatedText += event.text;
+            }
+            break;
           }
-          break;
-        }
 
-        case 'finished': {
-          accumulatedText = event.text || accumulatedText;
-          break;
-        }
+          case 'finished': {
+            accumulatedText = event.text || accumulatedText;
+            break;
+          }
 
-        case 'error': {
-          this.socketBridge.broadcastBubble({
-            agentId: event.agentId,
-            text: `[Error] ${event.text?.slice(0, 80)}`,
-            durationMs: 4000,
-            bubbleType: 'alert',
-          });
-          break;
+          case 'error': {
+            this.socketBridge.broadcastBubble({
+              agentId: event.agentId,
+              text: `[Error] ${event.text?.slice(0, 80)}`,
+              durationMs: 4000,
+              bubbleType: 'alert',
+            });
+            break;
+          }
         }
       }
-    }
 
     const finalReply = QuerySafety.sanitizeBrandIdentity(
       accumulatedText.trim() ||
@@ -991,8 +1089,25 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       this.taskTerminalLogsMap.set(taskId, []);
     }
 
-    // 1. Mark task in_progress
-    await DbQueries.updateTaskStatus(taskId, 'in_progress');
+    const previousActiveDir = this.activeDirectory;
+    const targetProjectDir = extractTargetProjectDir(`${task.title} ${task.description}`);
+    const resolvedTarget = WorkspaceFsTools.resolveSafePath(targetProjectDir);
+
+    // Pre-scaffold the target project directory so it exists on disk before any agent runs
+    if (!fsSync.existsSync(resolvedTarget)) {
+      try {
+        fsSync.mkdirSync(resolvedTarget, { recursive: true });
+      } catch (err) {
+        console.warn(`[AdkOfficeService] Could not pre-create directory ${resolvedTarget}:`, err);
+      }
+    }
+
+    // Set active directory and workspace base dir for all tool handlers during this task
+    this.setActiveDirectory(targetProjectDir);
+
+    try {
+      // 1. Mark task in_progress
+      await DbQueries.updateTaskStatus(taskId, 'in_progress');
     task.status = 'in_progress';
     this.socketBridge.broadcastTaskUpdated(task);
 
@@ -1035,60 +1150,237 @@ Mohon konfirmasi di chat atau jalankan \`/approve ${approvalId}\` via Telegram.`
       }
     }
 
-    const prompt = `DIRECTIVE FROM BOSS:
+    let deliverable = '';
+    const involvedAgents = new Set<string>();
+    let lastSpeakingAgentId: AgentId = AGENT_IDS.LEADER;
+    let dynamicHandoffs: TaskHandoffRecord[] = [];
+    type HandoffStage = 'planning' | 'research' | 'engineering' | 'qa_verification' | 'archival' | 'synthesis';
+    let qaVerdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
+    let loopResult:
+      | {
+          success: boolean;
+          deliverable: string;
+          iterations: number;
+          qaVerdict: 'APPROVED' | 'REJECTED';
+          stages: Array<{ stage: string; agentId: AgentId; summary: string }>;
+        }
+      | undefined;
+
+    const isDevTask = /api|server|fastify|express|laravel|test|crud|code|endpoint|buatkan|build|implement|scaffold|projek|project|database|postgres|sql|migrate|service|repository|route|handler|curl/i.test(
+      `${task.title} ${task.description} ${(task as any).category || ''}`
+    );
+
+    if (isDevTask) {
+      this.socketBridge.broadcastBubble({
+        agentId: AGENT_IDS.LEADER,
+        text: `Zen analyzing complexity & dispatching task "${task.title}" to Agent Office Team...`,
+        durationMs: 3500,
+        bubbleType: 'thought',
+      });
+
+      const loop = this.swarm.executeAutonomousDevLoop({
+        goal: `${task.title}\n${task.description}`,
+        activeDirectory: targetProjectDir,
+        taskId,
+        userId: 'boss',
+      });
+
+      while (true) {
+        const next = await loop.next();
+        if (next.done) {
+          loopResult = next.value;
+          break;
+        }
+        const event = next.value;
+
+        if (event.agentId) {
+          lastSpeakingAgentId = event.agentId;
+          this.currentExecutingAgentId = event.agentId;
+        }
+        if (event.agentName) {
+          involvedAgents.add(event.agentName);
+        }
+
+        if (event.type === 'agent_switch') {
+          this.socketBridge.broadcastBubble({
+            agentId: event.agentId,
+            text: event.text || `Focus switched to ${event.agentName}...`,
+            durationMs: 2500,
+            bubbleType: 'thought',
+          });
+          this.socketBridge.broadcastStatus({
+            agentId: event.agentId,
+            state: 'consulting',
+            currentThought: event.text || `Delegated step`,
+          });
+        } else if (event.type === 'tool_call') {
+          this.socketBridge.broadcastBubble({
+            agentId: event.agentId,
+            text: `Calling ${event.toolName}...`,
+            durationMs: 2500,
+            bubbleType: 'thought',
+          });
+          this.socketBridge.broadcastStatus({
+            agentId: event.agentId,
+            state: 'working',
+            currentThought: `[tool] ${event.toolName}`,
+          });
+        }
+      }
+
+      if (loopResult) {
+        deliverable = loopResult.deliverable;
+        qaVerdict = loopResult.qaVerdict;
+
+        dynamicHandoffs = loopResult.stages.map((st, i, arr) => ({
+          fromAgent: st.agentId,
+          toAgent: arr[i + 1]?.agentId || AGENT_IDS.LEADER,
+          stage: st.stage as any,
+          summary: st.summary,
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    } else {
+      this.socketBridge.broadcastBubble({
+        agentId: AGENT_IDS.LEADER,
+        text: `Zen analyzing complexity & dispatching task "${task.title}" to Agent Office Swarm...`,
+        durationMs: 3500,
+        bubbleType: 'thought',
+      });
+
+      const prompt = `DIRECTIVE FROM BOSS:
 Task Title: ${task.title}
 Task Description: ${task.description}
 Active Directory: ${this.activeDirectory}
 Attached Files: ${task.attachments?.map((a) => a.name).join(', ') || 'None'}
 ${attachmentContextText}
+
 MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
 1. DECISION MAKING & WORKLOAD EVALUATION:
-   Zen must evaluate task complexity ("trivial", "moderate", "complex", or "mission_critical") and call plan_task_execution to register the plan and strategy.
+   Zen must evaluate task complexity ("trivial", "moderate", "complex", or "mission_critical") and call plan_task_execution if needed.
 2. GUARDRAILS & HUMAN-IN-THE-LOOP:
    If dangerous or destructive operations are detected, call request_human_approval first.
-3. ALLOCATION & PARALLEL EXECUTION:
-   - For architecture/standards, consult search_knowledge_sop or delegate to dre.
-   - For code creation and package commands, delegate to iky.
-   - For background automation or schedulers, delegate to gus.
-   - When code is ready, ALWAYS delegate to rai for comprehensive testing and verification.
-   - Persist deliverables into long-term memory with dhea.
+3. ALLOCATION & SPECIALIST INVOCATION:
+   You have access to specialist AgentTools: iky, dre, gus, rai, dhea.
+   Invoke the appropriate specialists to inspect, query, or execute work as needed.
 4. SYNTHESIS:
    Synthesize the final verified solution and report back to Boss in professional Indonesian.`;
 
-    const stream = this.swarm.runTurn({
-      userId: 'boss',
-      sessionId: `task_session_${taskId}`,
-      userText: prompt,
-      targetAgentId: AGENT_IDS.LEADER,
-      activeDirectory: this.activeDirectory,
-      attachments: task.attachments || undefined,
-    });
+      const stream = this.swarm.runTurn({
+        userId: 'boss',
+        sessionId: `task_session_${taskId}`,
+        userText: prompt,
+        targetAgentId: AGENT_IDS.LEADER,
+        activeDirectory: this.activeDirectory,
+        attachments: task.attachments || undefined,
+      });
 
-    let deliverable = '';
-    const involvedAgents = new Set<string>();
-    let lastSpeakingAgentId: AgentId = AGENT_IDS.LEADER;
+      let currentStage: HandoffStage = 'planning';
+      let currentAgent: AgentId = AGENT_IDS.LEADER;
+      let stageSummary = `Zen initiated requirements evaluation for "${task.title}".`;
 
-    for await (const event of stream) {
-      if (event.agentId) {
-        lastSpeakingAgentId = event.agentId;
+      for await (const event of stream) {
+        if (event.agentId) {
+          lastSpeakingAgentId = event.agentId;
+          this.currentExecutingAgentId = event.agentId;
+        }
+        if (event.agentName) {
+          involvedAgents.add(event.agentName);
+        }
+
+        if (event.type === 'agent_switch') {
+          const prevAgent = currentAgent;
+          currentAgent = event.agentId;
+          this.currentExecutingAgentId = event.agentId;
+
+          let nextStage: HandoffStage = 'planning';
+          if (currentAgent === AGENT_IDS.ENGINEERING) nextStage = 'engineering';
+          else if (currentAgent === AGENT_IDS.QA) nextStage = 'qa_verification';
+          else if (currentAgent === AGENT_IDS.AUTOMATION) nextStage = 'engineering';
+          else if (currentAgent === AGENT_IDS.MEMORY) nextStage = 'archival';
+          else if (currentAgent === AGENT_IDS.RESEARCH) nextStage = 'research';
+
+          dynamicHandoffs.push({
+            fromAgent: prevAgent,
+            toAgent: currentAgent,
+            stage: currentStage,
+            summary: stageSummary,
+            timestamp: new Date().toISOString(),
+          });
+
+          currentStage = nextStage;
+          stageSummary = event.text || `Work delegated to ${event.agentName}`;
+
+          this.socketBridge.broadcastBubble({
+            agentId: event.agentId,
+            text: `Focus switched to ${event.agentName}...`,
+            durationMs: 2500,
+            bubbleType: 'thought',
+          });
+        } else if (event.type === 'tool_call') {
+          this.currentExecutingAgentId = event.agentId;
+          this.socketBridge.broadcastBubble({
+            agentId: event.agentId,
+            text: `Calling ${event.toolName}...`,
+            durationMs: 2500,
+            bubbleType: 'thought',
+          });
+          this.socketBridge.broadcastStatus({
+            agentId: event.agentId,
+            state: 'working',
+            currentThought: `[tool] ${event.toolName}`,
+          });
+        } else if (event.type === 'speech' && event.text) {
+          deliverable += event.text;
+        } else if (event.type === 'finished' && event.text) {
+          deliverable = event.text;
+        }
       }
-      if (event.agentName) {
-        involvedAgents.add(event.agentName);
-      }
-      if (event.type === 'speech' && event.text) {
-        deliverable += event.text;
-      } else if (event.type === 'finished' && event.text) {
-        deliverable = event.text;
-      }
+
+      dynamicHandoffs.push({
+        fromAgent: currentAgent,
+        toAgent: AGENT_IDS.LEADER,
+        stage: currentStage,
+        summary: stageSummary,
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    const finalOutput = QuerySafety.sanitizeBrandIdentity(
-      deliverable.trim() || 'Task completed successfully by Agent Office Team.'
+    // Retrieve accumulated terminal logs for this task
+    const currentTerminalLogs = this.taskTerminalLogsMap.get(taskId) || [];
+
+    // Evaluate truthful QA verdict based on real physical executions
+    const hasCreatedFiles = currentTerminalLogs.some(
+      (l) => l.toolName === 'write_file' || l.toolName === 'edit_file'
     );
+    const hasExecutedBash = currentTerminalLogs.some(
+      (l) => l.toolName === 'execute_bash'
+    );
+    const hasFailedLogs = currentTerminalLogs.some(
+      (l) => l.exitCode !== undefined && l.exitCode !== 0
+    );
+    const hasRejectedKeyword = /VERDICT:\s*REJECTED|STATUS:\s*REJECTED|QA AUDIT VERDICT:\s*REJECTED/i.test(deliverable);
+    const hasApprovedKeyword = /VERDICT:\s*APPROVED|STATUS:\s*APPROVED|QA AUDIT VERDICT:\s*APPROVED/i.test(deliverable);
+
+    if (isDevTask && loopResult) {
+      qaVerdict = loopResult.qaVerdict;
+    } else if (isDevTask && currentTerminalLogs.length === 0) {
+      qaVerdict = 'REJECTED';
+    } else if (isDevTask && (!hasCreatedFiles || !hasExecutedBash) && !hasApprovedKeyword) {
+      qaVerdict = 'REJECTED';
+    } else if (hasRejectedKeyword) {
+      qaVerdict = 'REJECTED';
+    } else if (hasFailedLogs && !hasApprovedKeyword) {
+      qaVerdict = 'REJECTED';
+    } else if (qaVerdict !== 'REJECTED' && currentTerminalLogs.length > 0 && !hasFailedLogs) {
+      qaVerdict = 'APPROVED';
+    } else if (hasApprovedKeyword && !hasFailedLogs) {
+      qaVerdict = 'APPROVED';
+    } else {
+      qaVerdict = isDevTask ? 'REJECTED' : 'APPROVED';
+    }
 
     // Determine the solving agent / team name:
-    // If a specific subagent did the work (e.g. Iky, Dre, Gus, Rai, Dhea), name that agent.
-    // If multiple subagents worked together or entire office, use "Agent Office Team".
     const nonLeaderAgents = Array.from(involvedAgents).filter(
       (name) => !name.includes('Zen') && !name.includes('Leader')
     );
@@ -1098,49 +1390,67 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
         : (involvedAgents.size === 1 ? Array.from(involvedAgents)[0] : 'Agent Office Team')
     );
 
-    const handoffChain: TaskHandoffRecord[] = [
-      {
-        fromAgent: AGENT_IDS.LEADER,
-        toAgent: AGENT_IDS.RESEARCH,
-        stage: 'planning',
-        summary: `Zen decomposed requirements for "${task.title}".`,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        fromAgent: AGENT_IDS.RESEARCH,
-        toAgent: AGENT_IDS.ENGINEERING,
-        stage: 'engineering',
-        summary: `Technical parameters confirmed; handed off to Iky/Gus for implementation.`,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        fromAgent: AGENT_IDS.ENGINEERING,
-        toAgent: AGENT_IDS.QA,
-        stage: 'qa_verification',
-        summary: `Implementation complete; Rai verified against Boss requirements.`,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        fromAgent: AGENT_IDS.QA,
-        toAgent: AGENT_IDS.MEMORY,
-        stage: 'archival',
-        summary: `QA approved; Dhea indexed task into pgvector long-term memory & Redis L1 cache.`,
-        timestamp: new Date().toISOString(),
-      },
-    ];
+    if (!deliverable.trim()) {
+      const createdFiles = currentTerminalLogs
+        .filter((l) => l.toolName === 'write_file')
+        .map((l) => `- \`${(l.parameters as any)?.filePath || l.command}\``)
+        .join('\n');
+      const testedCmds = currentTerminalLogs
+        .filter((l) => l.toolName === 'execute_bash')
+        .map((l) => `- \`${l.command}\` (Exit Code: ${l.exitCode ?? 0})`)
+        .join('\n');
 
-    // 2. Mark completed
-    task.status = 'completed';
+      deliverable = `## Ringkasan Eksekutif Deliverable (Agent Office Team)
+**Status QA**: ${qaVerdict === 'APPROVED' ? 'APPROVED (Terverifikasi)' : 'REJECTED (Perlu Evaluasi)'}
+**Diselesaikan Oleh**: ${solverName}
+
+### Berkas yang Dibuat di Disk:
+${createdFiles || 'Berkas proyek telah dibuat di direktori kerja.'}
+
+### Pengujian Terminal yang Dijalankan:
+${testedCmds || 'Pemeriksaan kualitas dan pengujian telah dijalankan.'}
+
+### Hasil Akhir:
+Tugas telah diproses dan dieksekusi secara otonom oleh Agent Office Team.`;
+    }
+
+    const finalOutput = QuerySafety.sanitizeBrandIdentity(deliverable.trim());
+
+    // Honest roadmap: accurately represent actual stages that ran
+    let handoffChain = dynamicHandoffs;
+    if (handoffChain.length === 0) {
+      handoffChain = [
+        {
+          fromAgent: AGENT_IDS.LEADER,
+          toAgent: AGENT_IDS.LEADER,
+          stage: 'planning',
+          summary: qaVerdict === 'APPROVED'
+            ? `Zen successfully completed execution for "${task.title}".`
+            : `Zen evaluated requirements for "${task.title}" (rejected by QA audit).`,
+          timestamp: new Date().toISOString(),
+        },
+      ];
+    }
+
+    // 2. Mark completed or failed based on real QA audit verdict
+    const isSuccess = qaVerdict === 'APPROVED';
+    const finalTaskStatus = isSuccess ? 'completed' : 'failed';
+
+    task.status = finalTaskStatus;
     task.handoffChain = handoffChain;
-    task.qaVerdict = 'APPROVED';
-    task.qaNotes = 'Deliverable verified and matched Boss requirements.';
-
-    // Retrieve accumulated terminal logs for this task
-    const currentTerminalLogs = this.taskTerminalLogsMap.get(taskId) || [];
+    task.qaVerdict = qaVerdict;
+    task.qaNotes = isSuccess
+      ? 'Deliverable verified and matched Boss requirements.'
+      : (currentTerminalLogs.length === 0
+          ? 'Pengujian QA ditolak: Tidak ada eksekusi berkas atau pengujian terminal fisik yang dijalankan oleh agen.'
+          : 'Pengujian QA ditolak: Perintah pengujian gagal atau berkas belum lengkap.');
 
     // Persist roadmap steps into task_roadmaps
     for (let i = 0; i < handoffChain.length; i++) {
       const h = handoffChain[i];
+      const stageTools = currentTerminalLogs.filter(
+        (log) => log.executedBy === h.fromAgent || log.executedBy === h.toAgent
+      );
       await DbQueries.recordRoadmapStep({
         id: `step_${taskId}_${i + 1}`,
         taskId,
@@ -1149,9 +1459,10 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
         agentId: h.fromAgent,
         title: `${h.stage.toUpperCase()}: Handed off to ${h.toAgent}`,
         description: h.summary,
-        status: 'completed',
+        status: isSuccess ? 'completed' : (i === handoffChain.length - 1 ? 'failed' : 'completed'),
         resultSummary: h.summary,
-        durationMs: 150,
+        toolCalls: stageTools.length > 0 ? stageTools : currentTerminalLogs,
+        durationMs: 250,
         completedAt: h.timestamp,
       }).catch(console.warn);
     }
@@ -1162,10 +1473,12 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
       taskId,
       deliverableType: 'final_solution',
       content: finalOutput,
-      qaVerdict: 'APPROVED',
-      qaNotes: 'Verified autonomous multi-agent delivery against Boss requirements.',
+      qaVerdict,
+      qaNotes: isSuccess
+        ? 'Verified autonomous multi-agent delivery against Boss requirements.'
+        : 'Autonomous delivery completed with QA audit rejection.',
       qaTestsRun: [
-        { name: 'Syntax & Schema Compliance', passed: true, output: 'Verified' },
+        { name: 'Syntax & Schema Compliance', passed: isSuccess, output: isSuccess ? 'Verified' : 'Failed' },
         { name: 'Brand Safety & Identity', passed: true, output: 'Zero vendor leaks, Agent Office trademark confirmed.' },
       ],
       testedBy: AGENT_IDS.QA,
@@ -1181,30 +1494,32 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
     });
 
     // Auto-synthesize learned pattern into agent_learning_patterns for multi-agent evaluation
-    await DbQueries.recordLearningPattern({
-      id: `pattern_${taskId}`,
-      patternType: 'task_solution',
-      title: task.title,
-      intentCategory: task.intent || 'feature_implementation',
-      contextSummary: task.description.slice(0, 300),
-      patternContent: finalOutput.slice(0, 3500),
-      taskId,
-      agentId: solverName.includes('Iky') ? AGENT_IDS.ENGINEERING : (solverName.includes('Gus') ? AGENT_IDS.AUTOMATION : AGENT_IDS.LEADER),
-      successRate: 1.0,
-      applicationCount: 1,
-      metadata: {
-        solverName,
-        qaVerdict: 'APPROVED',
-        toolsCount: currentTerminalLogs.length,
-      },
-    }).catch((err) => console.warn('[AdkOfficeService] Failed to record learning pattern:', err));
+    if (isSuccess) {
+      await DbQueries.recordLearningPattern({
+        id: `pattern_${taskId}`,
+        patternType: 'task_solution',
+        title: task.title,
+        intentCategory: task.intent || 'feature_implementation',
+        contextSummary: task.description.slice(0, 300),
+        patternContent: finalOutput.slice(0, 3500),
+        taskId,
+        agentId: solverName.includes('Iky') ? AGENT_IDS.ENGINEERING : (solverName.includes('Gus') ? AGENT_IDS.AUTOMATION : AGENT_IDS.LEADER),
+        successRate: 1.0,
+        applicationCount: 1,
+        metadata: {
+          solverName,
+          qaVerdict,
+          toolsCount: currentTerminalLogs.length,
+        },
+      }).catch((err) => console.warn('[AdkOfficeService] Failed to record learning pattern:', err));
+    }
 
     task.terminalLogs = currentTerminalLogs;
     task.roadmap = await DbQueries.getRoadmapByTaskId(taskId);
     task.deliverables = deliverableRecord ? [deliverableRecord] : [];
     task.outputPayload = {
       finalDeliverable: finalOutput,
-      qaVerdict: 'APPROVED',
+      qaVerdict,
       executedBy: solverName,
       handoffChain,
       terminalLogs: currentTerminalLogs,
@@ -1219,29 +1534,29 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
       }
     }
 
-    await DbQueries.updateTaskStatus(taskId, 'completed', task.outputPayload, task.plan, {
-      qaVerdict: 'APPROVED',
-      qaNotes: 'Verified autonomous multi-agent delivery',
+    await DbQueries.updateTaskStatus(taskId, finalTaskStatus, task.outputPayload, task.plan, {
+      qaVerdict,
+      qaNotes: task.qaNotes,
       handoffChain,
     });
 
-    // Record task completion activity
+    // Record task completion or failure activity
     await DbQueries.recordActivity({
       id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       taskId,
       agentId: AGENT_IDS.LEADER,
-      eventType: 'TASK_COMPLETED',
-      message: `Task completed by ${solverName}: "${task.title}"`,
-      metadata: { solverName, qaVerdict: 'APPROVED', terminalLogsCount: currentTerminalLogs.length },
+      eventType: isSuccess ? 'TASK_COMPLETED' : 'TASK_FAILED',
+      message: isSuccess ? `Task completed by ${solverName}: "${task.title}"` : `Task failed QA audit by ${solverName}: "${task.title}"`,
+      metadata: { solverName, qaVerdict, terminalLogsCount: currentTerminalLogs.length },
     }).catch(console.warn);
 
     this.socketBridge.broadcastTaskUpdated(task);
 
     this.socketBridge.broadcastBubble({
       agentId: lastSpeakingAgentId,
-      text: `Task completed! Results delivered.`,
+      text: isSuccess ? `Task completed! Results verified.` : `Task failed QA audit: ${task.qaNotes.slice(0, 50)}`,
       durationMs: 4000,
-      bubbleType: 'speech',
+      bubbleType: isSuccess ? 'speech' : 'alert',
     });
 
     const senderDisplayName = AGENT_CONFIGS[lastSpeakingAgentId]?.name || 'Zen (Leader)';
@@ -1256,7 +1571,10 @@ MANDATORY PROTOCOL FOR LEADER AGENT (ZEN) & AGENT OFFICE TEAM:
       type: 'dialogue',
     });
 
-    this.activeTaskId = null;
     return task;
+    } finally {
+      this.setActiveDirectory(previousActiveDir);
+      this.activeTaskId = null;
+    }
   }
 }

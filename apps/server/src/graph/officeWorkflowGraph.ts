@@ -59,6 +59,7 @@ export const OfficeWorkflowAnnotation = Annotation.Root({
     reason?: string;
   } | null>(),
   qaVerdict: Annotation<'APPROVED' | 'CONDITIONAL_PASS' | 'FAILED'>(),
+  qaFeedback: Annotation<string>(),
   status: Annotation<TaskStateType>(),
   iterationCount: Annotation<number>({
     reducer: (curr, val) => (curr || 0) + val,
@@ -340,19 +341,24 @@ export class OfficeWorkflowGraphBuilder {
         return { planSteps: validSteps, status: 'planned' as TaskStateType };
       })
 
-      // 6. Execute Specialists Node (Bounded concurrency & transient retries <= 2)
+      // 6. Execute Specialists Node (Parallel & Sequential Concurrency + Transient Retries)
       .addNode('execute_specialists', async (state) => {
         const steps = state.planSteps || [];
         try {
           await DbQueries.updateTaskStatus(state.taskId, 'in_progress', null, { steps });
         } catch {}
 
-        const results: Array<{ specialist: string; output: string }> = [];
+        const results: Array<{ specialist: string; output: string }> = [...(state.stepResults || [])];
+
+        const isRepairIteration = (state.iterationCount || 0) > 0 && state.qaVerdict !== 'APPROVED';
+        const taskDescription = isRepairIteration
+          ? `${state.description}\n\n[REPAIR DIRECTIVE FROM QA AUDIT (Iteration ${state.iterationCount})]:\nQA Verdict: ${state.qaVerdict}\nFeedback: ${state.qaFeedback || 'Please fix identified defects.'}`
+          : state.description;
 
         const mockTask: Task = {
           id: state.taskId,
           title: state.title,
-          description: state.description,
+          description: taskDescription,
           status: 'in_progress',
           assignedAgentId: AGENT_IDS.LEADER,
           attachments: state.attachments || [],
@@ -362,7 +368,16 @@ export class OfficeWorkflowGraphBuilder {
           updatedAt: new Date().toISOString(),
         };
 
+        // Group steps by parallelGroup for concurrent execution
+        const parallelBatches: Map<string, Array<(typeof steps)[0]>> = new Map();
         for (const step of steps) {
+          const groupKey = (step as any).parallelGroup !== undefined ? `parallel_${(step as any).parallelGroup}` : `seq_${step.stepIndex}`;
+          const list = parallelBatches.get(groupKey) || [];
+          list.push(step);
+          parallelBatches.set(groupKey, list);
+        }
+
+        const executeSingleStep = async (step: (typeof steps)[0]): Promise<{ specialist: string; output: string }> => {
           let output = '';
           let retries = 0;
 
@@ -370,7 +385,7 @@ export class OfficeWorkflowGraphBuilder {
             try {
               if (step.assignedTo === AGENT_IDS.RESEARCH) {
                 await research.setStatus('working', step.objective, state.taskId);
-                const res = await research.execute({ task: mockTask });
+                const res = await research.execute({ task: mockTask, previousOutputs: { previousSteps: results } });
                 output = res.output;
               } else if (step.assignedTo === AGENT_IDS.ENGINEERING) {
                 await engineering.setStatus('working', step.objective, state.taskId);
@@ -412,7 +427,13 @@ export class OfficeWorkflowGraphBuilder {
             }
           }
 
-          results.push({ specialist: step.assignedTo, output });
+          return { specialist: step.assignedTo, output };
+        };
+
+        // Execute batches: each batch runs its items in parallel (Promise.all)
+        for (const [, batchSteps] of parallelBatches) {
+          const batchResults = await Promise.all(batchSteps.map((s) => executeSingleStep(s)));
+          results.push(...batchResults);
         }
 
         return { stepResults: results, status: 'in_progress' as TaskStateType };
@@ -474,7 +495,8 @@ export class OfficeWorkflowGraphBuilder {
         });
 
         return {
-          qaVerdict: qaRes.success ? ('APPROVED' as const) : ('CONDITIONAL_PASS' as const),
+          qaVerdict: qaRes.success ? ('APPROVED' as const) : ('FAILED' as const),
+          qaFeedback: qaRes.output,
           verifiedArtifact: artifactCheck,
           status: 'reviewing' as TaskStateType,
           iterationCount: 1,
@@ -531,9 +553,13 @@ export class OfficeWorkflowGraphBuilder {
       .addEdge('execute_specialists', 'compose_humanized')
       .addEdge('compose_humanized', 'verify_deliverable')
       .addConditionalEdges('verify_deliverable', (state) => {
-        // Allow at most 1 post-verification revision loop if artifact verification fails
-        if (state.verifiedArtifact && !state.verifiedArtifact.verified && (state.iterationCount || 0) < 1) {
-          return 'compose_humanized';
+        // Dynamic Development Loop: If verification fails or QA requests changes, loop back to execute_specialists (up to 2 iterations)
+        const hasDefects =
+          (state.verifiedArtifact && !state.verifiedArtifact.verified) ||
+          state.qaVerdict === 'FAILED';
+
+        if (hasDefects && (state.iterationCount || 0) < 3) {
+          return 'execute_specialists';
         }
         return 'deliver';
       })
